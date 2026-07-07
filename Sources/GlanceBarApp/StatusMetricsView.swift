@@ -51,6 +51,7 @@ final class StatusMetricsView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
+        drawBackground()
         drawColumn(label: "CPU", value: "\(snapshot.cpuUsagePercent)%", percent: snapshot.cpuUsagePercent, x: 0)
 
         if configuration.isGpuEnabled {
@@ -66,6 +67,15 @@ final class StatusMetricsView: NSView {
         drawColumn(label: "RAM", value: "\(snapshot.ramUsagePercent)%", percent: snapshot.ramUsagePercent, x: ramColumnX)
         drawColumn(label: "SSD", value: "\(snapshot.ssdUsagePercent)%", percent: snapshot.ssdUsagePercent, x: ssdColumnX)
         drawNetwork(x: networkColumnX)
+    }
+
+    private func drawBackground() {
+        guard configuration.isBackgroundEnabled else {
+            return
+        }
+
+        configuration.backgroundColor.setFill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 2), xRadius: 5, yRadius: 5).fill()
     }
 
     private func drawColumn(label: String, value: String, percent: Int, x: CGFloat) {

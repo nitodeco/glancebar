@@ -6,6 +6,8 @@ let minimumGpuPollingMultiplier = 1
 let maximumGpuPollingMultiplier = 20
 let minimumWarningThresholdPercent = 1
 let maximumWarningThresholdPercent = 100
+let minimumBackgroundOpacityPercent = 10
+let maximumBackgroundOpacityPercent = 100
 let colorPresets = [
     ColorPreset(id: "red", title: "Red", color: NSColor(srgbRed: 0.86, green: 0.04, blue: 0.08, alpha: 1)),
     ColorPreset(id: "orange", title: "Orange", color: NSColor(srgbRed: 0.88, green: 0.28, blue: 0.00, alpha: 1)),
@@ -26,6 +28,10 @@ private let warningThresholdKey = "warningThresholdPercent"
 private let warningColorKey = "warningColor"
 private let uploadColorKey = "uploadColor"
 private let downloadColorKey = "downloadColor"
+private let isBackgroundEnabledKey = "isBackgroundEnabled"
+private let backgroundHueKey = "backgroundHue"
+private let backgroundSaturationKey = "backgroundSaturation"
+private let backgroundOpacityPercentKey = "backgroundOpacityPercent"
 private let defaultPollingIntervalInSeconds: TimeInterval = 3
 private let defaultIsGpuEnabled = false
 private let defaultGpuPollingMultiplier = 2
@@ -35,6 +41,10 @@ private let defaultWarningThresholdPercent = 80
 private let defaultWarningColorID = "red"
 private let defaultUploadColorID = "purple"
 private let defaultDownloadColorID = "blue"
+private let defaultIsBackgroundEnabled = false
+private let defaultBackgroundHue = 0.62
+private let defaultBackgroundSaturation = 0.18
+private let defaultBackgroundOpacityPercent = 82
 
 struct AppConfiguration {
     let pollingIntervalInSeconds: TimeInterval
@@ -46,10 +56,15 @@ struct AppConfiguration {
     let warningColorID: String
     let uploadColorID: String
     let downloadColorID: String
+    let isBackgroundEnabled: Bool
+    let backgroundHue: Double
+    let backgroundSaturation: Double
+    let backgroundOpacityPercent: Int
     let yellowColor: NSColor
     let warningColor: NSColor
     let uploadColor: NSColor
     let downloadColor: NSColor
+    let backgroundColor: NSColor
 }
 
 struct ColorPreset {
@@ -100,7 +115,26 @@ final class AppConfigurationStore {
             warningThresholdPercent: warningThresholdPercent,
             warningColorID: readColorID(forKey: warningColorKey, fallback: defaultConfiguration.warningColorID),
             uploadColorID: readColorID(forKey: uploadColorKey, fallback: defaultConfiguration.uploadColorID),
-            downloadColorID: readColorID(forKey: downloadColorKey, fallback: defaultConfiguration.downloadColorID)
+            downloadColorID: readColorID(forKey: downloadColorKey, fallback: defaultConfiguration.downloadColorID),
+            isBackgroundEnabled: userDefaults.object(forKey: isBackgroundEnabledKey) as? Bool ?? defaultConfiguration.isBackgroundEnabled,
+            backgroundHue: readDouble(
+                forKey: backgroundHueKey,
+                fallback: defaultConfiguration.backgroundHue,
+                minValue: 0,
+                maxValue: 1
+            ),
+            backgroundSaturation: readDouble(
+                forKey: backgroundSaturationKey,
+                fallback: defaultConfiguration.backgroundSaturation,
+                minValue: 0,
+                maxValue: 1
+            ),
+            backgroundOpacityPercent: clamp(
+                value: userDefaults.integer(forKey: backgroundOpacityPercentKey),
+                fallback: defaultConfiguration.backgroundOpacityPercent,
+                minValue: minimumBackgroundOpacityPercent,
+                maxValue: maximumBackgroundOpacityPercent
+            )
         )
     }
 
@@ -114,12 +148,24 @@ final class AppConfigurationStore {
         userDefaults.set(configuration.warningColorID, forKey: warningColorKey)
         userDefaults.set(configuration.uploadColorID, forKey: uploadColorKey)
         userDefaults.set(configuration.downloadColorID, forKey: downloadColorKey)
+        userDefaults.set(configuration.isBackgroundEnabled, forKey: isBackgroundEnabledKey)
+        userDefaults.set(configuration.backgroundHue, forKey: backgroundHueKey)
+        userDefaults.set(configuration.backgroundSaturation, forKey: backgroundSaturationKey)
+        userDefaults.set(configuration.backgroundOpacityPercent, forKey: backgroundOpacityPercentKey)
     }
 
     private func readColorID(forKey key: String, fallback: String) -> String {
         let maybeColorID = userDefaults.string(forKey: key)
 
         return getColorPreset(id: maybeColorID)?.id ?? fallback
+    }
+
+    private func readDouble(forKey key: String, fallback: Double, minValue: Double, maxValue: Double) -> Double {
+        guard userDefaults.object(forKey: key) != nil else {
+            return fallback
+        }
+
+        return clamp(value: userDefaults.double(forKey: key), fallback: fallback, minValue: minValue, maxValue: maxValue)
     }
 
     private func readGpuPollingMultiplier(pollingIntervalInSeconds: TimeInterval, fallback: Int) -> Int {
@@ -159,7 +205,11 @@ func makeDefaultAppConfiguration() -> AppConfiguration {
         warningThresholdPercent: defaultWarningThresholdPercent,
         warningColorID: defaultWarningColorID,
         uploadColorID: defaultUploadColorID,
-        downloadColorID: defaultDownloadColorID
+        downloadColorID: defaultDownloadColorID,
+        isBackgroundEnabled: defaultIsBackgroundEnabled,
+        backgroundHue: defaultBackgroundHue,
+        backgroundSaturation: defaultBackgroundSaturation,
+        backgroundOpacityPercent: defaultBackgroundOpacityPercent
     )
 }
 
@@ -179,7 +229,11 @@ extension AppConfiguration {
         warningThresholdPercent: Int,
         warningColorID: String,
         uploadColorID: String,
-        downloadColorID: String
+        downloadColorID: String,
+        isBackgroundEnabled: Bool,
+        backgroundHue: Double,
+        backgroundSaturation: Double,
+        backgroundOpacityPercent: Int
     ) {
         self.pollingIntervalInSeconds = pollingIntervalInSeconds
         self.isGpuEnabled = isGpuEnabled
@@ -200,10 +254,25 @@ extension AppConfiguration {
         self.warningColorID = warningColorID
         self.uploadColorID = uploadColorID
         self.downloadColorID = downloadColorID
+        self.isBackgroundEnabled = isBackgroundEnabled
+        self.backgroundHue = clamp(value: backgroundHue, fallback: defaultBackgroundHue, minValue: 0, maxValue: 1)
+        self.backgroundSaturation = clamp(value: backgroundSaturation, fallback: defaultBackgroundSaturation, minValue: 0, maxValue: 1)
+        self.backgroundOpacityPercent = clamp(
+            value: backgroundOpacityPercent,
+            fallback: defaultBackgroundOpacityPercent,
+            minValue: minimumBackgroundOpacityPercent,
+            maxValue: maximumBackgroundOpacityPercent
+        )
         yellowColor = getColorPreset(id: yellowColorID)?.color ?? NSColor(srgbRed: 0.72, green: 0.54, blue: 0.00, alpha: 1)
         warningColor = getColorPreset(id: warningColorID)?.color ?? .systemRed
         uploadColor = getColorPreset(id: uploadColorID)?.color ?? .systemPurple
         downloadColor = getColorPreset(id: downloadColorID)?.color ?? .systemBlue
+        backgroundColor = NSColor(
+            calibratedHue: self.backgroundHue,
+            saturation: self.backgroundSaturation,
+            brightness: 0.18,
+            alpha: CGFloat(self.backgroundOpacityPercent) / 100
+        )
     }
 }
 
