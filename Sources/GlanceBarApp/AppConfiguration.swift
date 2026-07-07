@@ -2,8 +2,8 @@ import AppKit
 
 let minimumPollingIntervalInSeconds: TimeInterval = 1
 let maximumPollingIntervalInSeconds: TimeInterval = 60
-let minimumGpuPollingIntervalInSeconds: TimeInterval = 1
-let maximumGpuPollingIntervalInSeconds: TimeInterval = 60
+let minimumGpuPollingMultiplier = 1
+let maximumGpuPollingMultiplier = 20
 let minimumWarningThresholdPercent = 1
 let maximumWarningThresholdPercent = 100
 let colorPresets = [
@@ -18,7 +18,8 @@ let colorPresets = [
 
 private let pollingIntervalKey = "pollingIntervalInSeconds"
 private let isGpuEnabledKey = "isGpuEnabled"
-private let gpuPollingIntervalKey = "gpuPollingIntervalInSeconds"
+private let gpuPollingMultiplierKey = "gpuPollingMultiplier"
+private let legacyGpuPollingIntervalKey = "gpuPollingIntervalInSeconds"
 private let yellowThresholdKey = "yellowThresholdPercent"
 private let yellowColorKey = "yellowColor"
 private let warningThresholdKey = "warningThresholdPercent"
@@ -27,7 +28,7 @@ private let uploadColorKey = "uploadColor"
 private let downloadColorKey = "downloadColor"
 private let defaultPollingIntervalInSeconds: TimeInterval = 3
 private let defaultIsGpuEnabled = false
-private let defaultGpuPollingIntervalInSeconds: TimeInterval = 3
+private let defaultGpuPollingMultiplier = 2
 private let defaultYellowThresholdPercent = 60
 private let defaultYellowColorID = "yellow"
 private let defaultWarningThresholdPercent = 80
@@ -38,7 +39,7 @@ private let defaultDownloadColorID = "blue"
 struct AppConfiguration {
     let pollingIntervalInSeconds: TimeInterval
     let isGpuEnabled: Bool
-    let gpuPollingIntervalInSeconds: TimeInterval
+    let gpuPollingMultiplier: Int
     let yellowThresholdPercent: Int
     let yellowColorID: String
     let warningThresholdPercent: Int
@@ -73,11 +74,9 @@ final class AppConfigurationStore {
             minValue: minimumPollingIntervalInSeconds,
             maxValue: maximumPollingIntervalInSeconds
         )
-        let gpuPollingIntervalInSeconds = clamp(
-            value: userDefaults.double(forKey: gpuPollingIntervalKey),
-            fallback: defaultConfiguration.gpuPollingIntervalInSeconds,
-            minValue: minimumGpuPollingIntervalInSeconds,
-            maxValue: maximumGpuPollingIntervalInSeconds
+        let gpuPollingMultiplier = readGpuPollingMultiplier(
+            pollingIntervalInSeconds: pollingIntervalInSeconds,
+            fallback: defaultConfiguration.gpuPollingMultiplier
         )
         let warningThresholdPercent = clamp(
             value: userDefaults.integer(forKey: warningThresholdKey),
@@ -95,7 +94,7 @@ final class AppConfigurationStore {
         return AppConfiguration(
             pollingIntervalInSeconds: pollingIntervalInSeconds,
             isGpuEnabled: userDefaults.object(forKey: isGpuEnabledKey) as? Bool ?? defaultConfiguration.isGpuEnabled,
-            gpuPollingIntervalInSeconds: gpuPollingIntervalInSeconds,
+            gpuPollingMultiplier: gpuPollingMultiplier,
             yellowThresholdPercent: yellowThresholdPercent,
             yellowColorID: readColorID(forKey: yellowColorKey, fallback: defaultConfiguration.yellowColorID),
             warningThresholdPercent: warningThresholdPercent,
@@ -108,7 +107,7 @@ final class AppConfigurationStore {
     func save(_ configuration: AppConfiguration) {
         userDefaults.set(configuration.pollingIntervalInSeconds, forKey: pollingIntervalKey)
         userDefaults.set(configuration.isGpuEnabled, forKey: isGpuEnabledKey)
-        userDefaults.set(configuration.gpuPollingIntervalInSeconds, forKey: gpuPollingIntervalKey)
+        userDefaults.set(configuration.gpuPollingMultiplier, forKey: gpuPollingMultiplierKey)
         userDefaults.set(configuration.yellowThresholdPercent, forKey: yellowThresholdKey)
         userDefaults.set(configuration.yellowColorID, forKey: yellowColorKey)
         userDefaults.set(configuration.warningThresholdPercent, forKey: warningThresholdKey)
@@ -122,13 +121,39 @@ final class AppConfigurationStore {
 
         return getColorPreset(id: maybeColorID)?.id ?? fallback
     }
+
+    private func readGpuPollingMultiplier(pollingIntervalInSeconds: TimeInterval, fallback: Int) -> Int {
+        let maybeStoredMultiplier = userDefaults.object(forKey: gpuPollingMultiplierKey) as? Int
+
+        if let maybeStoredMultiplier {
+            return clamp(
+                value: maybeStoredMultiplier,
+                fallback: fallback,
+                minValue: minimumGpuPollingMultiplier,
+                maxValue: maximumGpuPollingMultiplier
+            )
+        }
+
+        let legacyGpuPollingIntervalInSeconds = userDefaults.double(forKey: legacyGpuPollingIntervalKey)
+
+        guard legacyGpuPollingIntervalInSeconds > 0, pollingIntervalInSeconds > 0 else {
+            return fallback
+        }
+
+        return clamp(
+            value: Int((legacyGpuPollingIntervalInSeconds / pollingIntervalInSeconds).rounded()),
+            fallback: fallback,
+            minValue: minimumGpuPollingMultiplier,
+            maxValue: maximumGpuPollingMultiplier
+        )
+    }
 }
 
 func makeDefaultAppConfiguration() -> AppConfiguration {
     AppConfiguration(
         pollingIntervalInSeconds: defaultPollingIntervalInSeconds,
         isGpuEnabled: defaultIsGpuEnabled,
-        gpuPollingIntervalInSeconds: defaultGpuPollingIntervalInSeconds,
+        gpuPollingMultiplier: defaultGpuPollingMultiplier,
         yellowThresholdPercent: defaultYellowThresholdPercent,
         yellowColorID: defaultYellowColorID,
         warningThresholdPercent: defaultWarningThresholdPercent,
@@ -148,7 +173,7 @@ extension AppConfiguration {
     init(
         pollingIntervalInSeconds: TimeInterval,
         isGpuEnabled: Bool,
-        gpuPollingIntervalInSeconds: TimeInterval,
+        gpuPollingMultiplier: Int,
         yellowThresholdPercent: Int,
         yellowColorID: String,
         warningThresholdPercent: Int,
@@ -158,7 +183,12 @@ extension AppConfiguration {
     ) {
         self.pollingIntervalInSeconds = pollingIntervalInSeconds
         self.isGpuEnabled = isGpuEnabled
-        self.gpuPollingIntervalInSeconds = gpuPollingIntervalInSeconds
+        self.gpuPollingMultiplier = clamp(
+            value: gpuPollingMultiplier,
+            fallback: defaultGpuPollingMultiplier,
+            minValue: minimumGpuPollingMultiplier,
+            maxValue: maximumGpuPollingMultiplier
+        )
         self.warningThresholdPercent = clamp(value: warningThresholdPercent, fallback: defaultWarningThresholdPercent, minValue: minimumWarningThresholdPercent, maxValue: maximumWarningThresholdPercent)
         self.yellowThresholdPercent = clamp(
             value: yellowThresholdPercent,

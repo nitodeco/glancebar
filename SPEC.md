@@ -37,7 +37,7 @@ CPU   GPU   RAM   SSD    ↑ 3 KB/s
 ## Polling
 
 - CPU, RAM, and network update every 3 seconds.
-- GPU has an independent configurable update interval.
+- GPU has a configurable polling multiplier based on the standard polling interval.
 - SSD usage updates every 30 seconds.
 
 ## Interaction
@@ -50,7 +50,7 @@ CPU   GPU   RAM   SSD    ↑ 3 KB/s
 
 - Polling interval.
 - GPU enabled.
-- GPU polling interval.
+- GPU polling multiplier.
 - Yellow threshold when CPU, GPU, RAM, and SSD values use the yellow indicator color.
 - Red threshold when CPU, GPU, RAM, and SSD values use the red indicator color.
 - Yellow and red indicator color presets.

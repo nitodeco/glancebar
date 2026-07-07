@@ -12,8 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var configuration: AppConfiguration
     private var maybeLatestSnapshot: MetricsSnapshot?
     private var maybeGpuUsagePercent: Int?
+    private var gpuPollingTickCount = 0
     private var timer: Timer?
-    private var gpuTimer: Timer?
     private var settingsWindowController: SettingsWindowController?
 
     override init() {
@@ -29,12 +29,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = makeMenu()
         updateMetrics()
         scheduleTimer()
-        scheduleGpuTimer()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
-        gpuTimer?.invalidate()
     }
 
     @objc private func updateMetrics() {
@@ -47,11 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             networkUploadBytesPerSecond: snapshot.networkUploadBytesPerSecond,
             networkDownloadBytesPerSecond: snapshot.networkDownloadBytesPerSecond
         )
-        syncMetricsViewSnapshot()
-    }
-
-    @objc private func updateGpuMetrics() {
-        maybeGpuUsagePercent = metricsReader.readGpuUsagePercent()
+        updateGpuMetricsIfNeeded()
         syncMetricsViewSnapshot()
     }
 
@@ -82,24 +76,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer?.tolerance = metricsTimerToleranceInSeconds
     }
 
-    private func scheduleGpuTimer() {
-        gpuTimer?.invalidate()
-        maybeGpuUsagePercent = nil
-
+    private func updateGpuMetricsIfNeeded() {
         guard configuration.isGpuEnabled else {
-            syncMetricsViewSnapshot()
+            maybeGpuUsagePercent = nil
+            gpuPollingTickCount = 0
             return
         }
 
-        updateGpuMetrics()
-        gpuTimer = Timer.scheduledTimer(
-            timeInterval: configuration.gpuPollingIntervalInSeconds,
-            target: self,
-            selector: #selector(updateGpuMetrics),
-            userInfo: nil,
-            repeats: true
-        )
-        gpuTimer?.tolerance = metricsTimerToleranceInSeconds
+        guard isStatusItemVisibleForGpuPolling() else {
+            return
+        }
+
+        gpuPollingTickCount += 1
+
+        guard gpuPollingTickCount >= configuration.gpuPollingMultiplier else {
+            return
+        }
+
+        gpuPollingTickCount = 0
+        maybeGpuUsagePercent = metricsReader.readGpuUsagePercent()
+    }
+
+    private func isStatusItemVisibleForGpuPolling() -> Bool {
+        guard let maybeStatusButton = statusItem.button else {
+            return false
+        }
+
+        return maybeStatusButton.window != nil && !maybeStatusButton.isHidden
     }
 
     private func configureStatusButton() {
@@ -129,9 +132,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showSettings() {
-        let settingsWindowController = settingsWindowController ?? SettingsWindowController(configuration: configuration) { [weak self] configuration in
-            self?.apply(configuration: configuration)
-        }
+        let settingsWindowController = settingsWindowController ?? SettingsWindowController(
+            configuration: configuration,
+            onChange: { [weak self] configuration in
+                self?.apply(configuration: configuration)
+            },
+            onClose: { [weak self] in
+                self?.settingsWindowController = nil
+            }
+        )
         self.settingsWindowController = settingsWindowController
         settingsWindowController.showWindow(nil)
         settingsWindowController.window?.makeKeyAndOrderFront(nil)
@@ -141,19 +150,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func apply(configuration newConfiguration: AppConfiguration) {
         let previousPollingIntervalInSeconds = configuration.pollingIntervalInSeconds
         let previousIsGpuEnabled = configuration.isGpuEnabled
-        let previousGpuPollingIntervalInSeconds = configuration.gpuPollingIntervalInSeconds
+        let previousGpuPollingMultiplier = configuration.gpuPollingMultiplier
         configuration = newConfiguration
         configurationStore.save(newConfiguration)
         metricsView.configuration = newConfiguration
         updateStatusItemSize()
+
+        if previousIsGpuEnabled != newConfiguration.isGpuEnabled || previousGpuPollingMultiplier != newConfiguration.gpuPollingMultiplier {
+            maybeGpuUsagePercent = nil
+            gpuPollingTickCount = 0
+        }
+
         syncMetricsViewSnapshot()
 
         if previousPollingIntervalInSeconds != newConfiguration.pollingIntervalInSeconds {
+            gpuPollingTickCount = 0
             scheduleTimer()
-        }
-
-        if previousIsGpuEnabled != newConfiguration.isGpuEnabled || previousGpuPollingIntervalInSeconds != newConfiguration.gpuPollingIntervalInSeconds {
-            scheduleGpuTimer()
         }
     }
 }

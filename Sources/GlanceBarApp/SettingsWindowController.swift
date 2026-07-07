@@ -9,8 +9,11 @@ private let colorPresetMenuWidth: CGFloat = 116
 private let colorSwatchGlyph = "■"
 
 @MainActor
-final class SettingsWindowController: NSWindowController {
-    init(configuration: AppConfiguration, onChange: @escaping (AppConfiguration) -> Void) {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+    private let onClose: () -> Void
+
+    init(configuration: AppConfiguration, onChange: @escaping (AppConfiguration) -> Void, onClose: @escaping () -> Void) {
+        self.onClose = onClose
         let settingsView = SettingsView(configuration: configuration, onChange: onChange)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: settingsWindowWidth, height: settingsWindowHeight),
@@ -23,11 +26,16 @@ final class SettingsWindowController: NSWindowController {
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)
+        window.delegate = self
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         nil
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        onClose()
     }
 }
 
@@ -36,12 +44,12 @@ private final class SettingsView: NSView {
     private var configuration: AppConfiguration
     private let onChange: (AppConfiguration) -> Void
     private let pollingValueLabel = NSTextField(labelWithString: "")
-    private let gpuPollingValueLabel = NSTextField(labelWithString: "")
+    private let gpuMultiplierValueLabel = NSTextField(labelWithString: "")
     private let yellowThresholdValueLabel = NSTextField(labelWithString: "")
     private let thresholdValueLabel = NSTextField(labelWithString: "")
     private let gpuEnabledButton = NSButton(checkboxWithTitle: "Show GPU", target: nil, action: nil)
     private let pollingStepper = NSStepper()
-    private let gpuPollingStepper = NSStepper()
+    private let gpuMultiplierStepper = NSStepper()
     private let yellowThresholdStepper = NSStepper()
     private let thresholdStepper = NSStepper()
     private let yellowColorMenu = NSPopUpButton()
@@ -79,7 +87,7 @@ private final class SettingsView: NSView {
 
         stackView.addArrangedSubview(makeNumberRow(label: "Polling", valueLabel: pollingValueLabel, stepper: pollingStepper))
         stackView.addArrangedSubview(gpuEnabledButton)
-        stackView.addArrangedSubview(makeNumberRow(label: "GPU polling", valueLabel: gpuPollingValueLabel, stepper: gpuPollingStepper))
+        stackView.addArrangedSubview(makeNumberRow(label: "GPU every", valueLabel: gpuMultiplierValueLabel, stepper: gpuMultiplierStepper))
         stackView.addArrangedSubview(makeNumberRow(label: "Yellow above", valueLabel: yellowThresholdValueLabel, stepper: yellowThresholdStepper))
         stackView.addArrangedSubview(makeNumberRow(label: "Red above", valueLabel: thresholdValueLabel, stepper: thresholdStepper))
         stackView.addArrangedSubview(makeColorRow(label: "Yellow", colorMenu: yellowColorMenu))
@@ -91,8 +99,8 @@ private final class SettingsView: NSView {
         pollingStepper.action = #selector(updatePollingInterval)
         gpuEnabledButton.target = self
         gpuEnabledButton.action = #selector(updateGpuEnabled)
-        gpuPollingStepper.target = self
-        gpuPollingStepper.action = #selector(updateGpuPollingInterval)
+        gpuMultiplierStepper.target = self
+        gpuMultiplierStepper.action = #selector(updateGpuPollingMultiplier)
         yellowThresholdStepper.target = self
         yellowThresholdStepper.action = #selector(updateYellowThreshold)
         thresholdStepper.target = self
@@ -189,13 +197,13 @@ private final class SettingsView: NSView {
         pollingValueLabel.stringValue = "\(Int(configuration.pollingIntervalInSeconds))s"
 
         gpuEnabledButton.state = configuration.isGpuEnabled ? .on : .off
-        gpuPollingStepper.minValue = minimumGpuPollingIntervalInSeconds
-        gpuPollingStepper.maxValue = maximumGpuPollingIntervalInSeconds
-        gpuPollingStepper.increment = 1
-        gpuPollingStepper.doubleValue = configuration.gpuPollingIntervalInSeconds
-        gpuPollingStepper.isEnabled = configuration.isGpuEnabled
-        gpuPollingValueLabel.stringValue = "\(Int(configuration.gpuPollingIntervalInSeconds))s"
-        gpuPollingValueLabel.textColor = configuration.isGpuEnabled ? .labelColor : .disabledControlTextColor
+        gpuMultiplierStepper.minValue = Double(minimumGpuPollingMultiplier)
+        gpuMultiplierStepper.maxValue = Double(maximumGpuPollingMultiplier)
+        gpuMultiplierStepper.increment = 1
+        gpuMultiplierStepper.integerValue = configuration.gpuPollingMultiplier
+        gpuMultiplierStepper.isEnabled = configuration.isGpuEnabled
+        gpuMultiplierValueLabel.stringValue = "\(configuration.gpuPollingMultiplier)x"
+        gpuMultiplierValueLabel.textColor = configuration.isGpuEnabled ? .labelColor : .disabledControlTextColor
 
         yellowThresholdStepper.minValue = Double(minimumWarningThresholdPercent)
         yellowThresholdStepper.maxValue = Double(max(minimumWarningThresholdPercent, configuration.warningThresholdPercent - 1))
@@ -235,7 +243,7 @@ private final class SettingsView: NSView {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: pollingStepper.doubleValue,
             isGpuEnabled: configuration.isGpuEnabled,
-            gpuPollingIntervalInSeconds: configuration.gpuPollingIntervalInSeconds,
+            gpuPollingMultiplier: configuration.gpuPollingMultiplier,
             yellowThresholdPercent: configuration.yellowThresholdPercent,
             yellowColorID: configuration.yellowColorID,
             warningThresholdPercent: configuration.warningThresholdPercent,
@@ -251,7 +259,7 @@ private final class SettingsView: NSView {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
             isGpuEnabled: gpuEnabledButton.state == .on,
-            gpuPollingIntervalInSeconds: configuration.gpuPollingIntervalInSeconds,
+            gpuPollingMultiplier: configuration.gpuPollingMultiplier,
             yellowThresholdPercent: configuration.yellowThresholdPercent,
             yellowColorID: configuration.yellowColorID,
             warningThresholdPercent: configuration.warningThresholdPercent,
@@ -263,11 +271,11 @@ private final class SettingsView: NSView {
         onChange(configuration)
     }
 
-    @objc private func updateGpuPollingInterval() {
+    @objc private func updateGpuPollingMultiplier() {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
             isGpuEnabled: configuration.isGpuEnabled,
-            gpuPollingIntervalInSeconds: gpuPollingStepper.doubleValue,
+            gpuPollingMultiplier: gpuMultiplierStepper.integerValue,
             yellowThresholdPercent: configuration.yellowThresholdPercent,
             yellowColorID: configuration.yellowColorID,
             warningThresholdPercent: configuration.warningThresholdPercent,
@@ -283,7 +291,7 @@ private final class SettingsView: NSView {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
             isGpuEnabled: configuration.isGpuEnabled,
-            gpuPollingIntervalInSeconds: configuration.gpuPollingIntervalInSeconds,
+            gpuPollingMultiplier: configuration.gpuPollingMultiplier,
             yellowThresholdPercent: yellowThresholdStepper.integerValue,
             yellowColorID: configuration.yellowColorID,
             warningThresholdPercent: configuration.warningThresholdPercent,
@@ -299,7 +307,7 @@ private final class SettingsView: NSView {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
             isGpuEnabled: configuration.isGpuEnabled,
-            gpuPollingIntervalInSeconds: configuration.gpuPollingIntervalInSeconds,
+            gpuPollingMultiplier: configuration.gpuPollingMultiplier,
             yellowThresholdPercent: configuration.yellowThresholdPercent,
             yellowColorID: configuration.yellowColorID,
             warningThresholdPercent: thresholdStepper.integerValue,
@@ -315,7 +323,7 @@ private final class SettingsView: NSView {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
             isGpuEnabled: configuration.isGpuEnabled,
-            gpuPollingIntervalInSeconds: configuration.gpuPollingIntervalInSeconds,
+            gpuPollingMultiplier: configuration.gpuPollingMultiplier,
             yellowThresholdPercent: configuration.yellowThresholdPercent,
             yellowColorID: selectedColorID(in: yellowColorMenu, fallback: configuration.yellowColorID),
             warningThresholdPercent: configuration.warningThresholdPercent,
@@ -330,7 +338,7 @@ private final class SettingsView: NSView {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
             isGpuEnabled: configuration.isGpuEnabled,
-            gpuPollingIntervalInSeconds: configuration.gpuPollingIntervalInSeconds,
+            gpuPollingMultiplier: configuration.gpuPollingMultiplier,
             yellowThresholdPercent: configuration.yellowThresholdPercent,
             yellowColorID: configuration.yellowColorID,
             warningThresholdPercent: configuration.warningThresholdPercent,
@@ -345,7 +353,7 @@ private final class SettingsView: NSView {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
             isGpuEnabled: configuration.isGpuEnabled,
-            gpuPollingIntervalInSeconds: configuration.gpuPollingIntervalInSeconds,
+            gpuPollingMultiplier: configuration.gpuPollingMultiplier,
             yellowThresholdPercent: configuration.yellowThresholdPercent,
             yellowColorID: configuration.yellowColorID,
             warningThresholdPercent: configuration.warningThresholdPercent,
@@ -360,7 +368,7 @@ private final class SettingsView: NSView {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
             isGpuEnabled: configuration.isGpuEnabled,
-            gpuPollingIntervalInSeconds: configuration.gpuPollingIntervalInSeconds,
+            gpuPollingMultiplier: configuration.gpuPollingMultiplier,
             yellowThresholdPercent: configuration.yellowThresholdPercent,
             yellowColorID: configuration.yellowColorID,
             warningThresholdPercent: configuration.warningThresholdPercent,
