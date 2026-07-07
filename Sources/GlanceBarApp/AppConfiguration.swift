@@ -6,6 +6,8 @@ let minimumGpuPollingMultiplier = 1
 let maximumGpuPollingMultiplier = 20
 let minimumWarningThresholdPercent = 1
 let maximumWarningThresholdPercent = 100
+let minimumColorAdjustmentPercent = -100
+let maximumColorAdjustmentPercent = 100
 let colorPresets = [
     ColorPreset(id: "red", title: "Red", color: NSColor(srgbRed: 0.86, green: 0.04, blue: 0.08, alpha: 1)),
     ColorPreset(id: "orange", title: "Orange", color: NSColor(srgbRed: 0.88, green: 0.28, blue: 0.00, alpha: 1)),
@@ -27,13 +29,16 @@ private let isGpuEnabledKey = "isGpuEnabled"
 private let gpuPollingMultiplierKey = "gpuPollingMultiplier"
 private let legacyGpuPollingIntervalKey = "gpuPollingIntervalInSeconds"
 private let yellowThresholdKey = "yellowThresholdPercent"
-private let yellowColorKey = "yellowColor"
+let yellowColorKey = "yellowColor"
 private let warningThresholdKey = "warningThresholdPercent"
-private let warningColorKey = "warningColor"
-private let uploadColorKey = "uploadColor"
-private let downloadColorKey = "downloadColor"
-private let baseTextColorKey = "baseTextColor"
-private let labelTextColorKey = "labelTextColor"
+let warningColorKey = "warningColor"
+let uploadColorKey = "uploadColor"
+let downloadColorKey = "downloadColor"
+let baseTextColorKey = "baseTextColor"
+let labelTextColorKey = "labelTextColor"
+private let hueAdjustmentKeySuffix = "HueAdjustment"
+private let saturationAdjustmentKeySuffix = "SaturationAdjustment"
+private let lightnessAdjustmentKeySuffix = "LightnessAdjustment"
 private let defaultPollingIntervalInSeconds: TimeInterval = 3
 private let defaultIsGpuEnabled = false
 private let defaultGpuPollingMultiplier = 2
@@ -58,6 +63,7 @@ struct AppConfiguration {
     let downloadColorID: String
     let baseTextColorID: String
     let labelTextColorID: String
+    let colorAdjustments: [String: ColorAdjustment]
     let yellowColor: NSColor
     let warningColor: NSColor
     let uploadColor: NSColor
@@ -71,6 +77,27 @@ struct ColorPreset {
     let title: String
     let color: NSColor
 }
+
+struct ColorAdjustment: Equatable {
+    let huePercent: Int
+    let saturationPercent: Int
+    let lightnessPercent: Int
+}
+
+struct ColorRole {
+    let id: String
+    let title: String
+    let usesTextPresets: Bool
+}
+
+let colorRoles = [
+    ColorRole(id: yellowColorKey, title: "Yellow", usesTextPresets: false),
+    ColorRole(id: warningColorKey, title: "Over threshold", usesTextPresets: false),
+    ColorRole(id: uploadColorKey, title: "Upload", usesTextPresets: false),
+    ColorRole(id: downloadColorKey, title: "Download", usesTextPresets: false),
+    ColorRole(id: baseTextColorKey, title: "Base text", usesTextPresets: true),
+    ColorRole(id: labelTextColorKey, title: "Label text", usesTextPresets: true)
+]
 
 @MainActor
 final class AppConfigurationStore {
@@ -116,7 +143,8 @@ final class AppConfigurationStore {
             uploadColorID: readColorID(forKey: uploadColorKey, fallback: defaultConfiguration.uploadColorID),
             downloadColorID: readColorID(forKey: downloadColorKey, fallback: defaultConfiguration.downloadColorID),
             baseTextColorID: readTextColorID(forKey: baseTextColorKey, fallback: defaultConfiguration.baseTextColorID),
-            labelTextColorID: readTextColorID(forKey: labelTextColorKey, fallback: defaultConfiguration.labelTextColorID)
+            labelTextColorID: readTextColorID(forKey: labelTextColorKey, fallback: defaultConfiguration.labelTextColorID),
+            colorAdjustments: readColorAdjustments()
         )
     }
 
@@ -132,6 +160,12 @@ final class AppConfigurationStore {
         userDefaults.set(configuration.downloadColorID, forKey: downloadColorKey)
         userDefaults.set(configuration.baseTextColorID, forKey: baseTextColorKey)
         userDefaults.set(configuration.labelTextColorID, forKey: labelTextColorKey)
+        for colorRole in colorRoles {
+            let colorAdjustment = getColorAdjustment(colorAdjustments: configuration.colorAdjustments, roleID: colorRole.id)
+            userDefaults.set(colorAdjustment.huePercent, forKey: colorRole.id + hueAdjustmentKeySuffix)
+            userDefaults.set(colorAdjustment.saturationPercent, forKey: colorRole.id + saturationAdjustmentKeySuffix)
+            userDefaults.set(colorAdjustment.lightnessPercent, forKey: colorRole.id + lightnessAdjustmentKeySuffix)
+        }
     }
 
     private func readColorID(forKey key: String, fallback: String) -> String {
@@ -144,6 +178,29 @@ final class AppConfigurationStore {
         let maybeColorID = userDefaults.string(forKey: key)
 
         return getTextColorPreset(id: maybeColorID)?.id ?? fallback
+    }
+
+    private func readColorAdjustments() -> [String: ColorAdjustment] {
+        colorRoles.reduce(into: [String: ColorAdjustment]()) { colorAdjustments, colorRole in
+            colorAdjustments[colorRole.id] = ColorAdjustment(
+                huePercent: readColorAdjustmentValue(forKey: colorRole.id + hueAdjustmentKeySuffix),
+                saturationPercent: readColorAdjustmentValue(forKey: colorRole.id + saturationAdjustmentKeySuffix),
+                lightnessPercent: readColorAdjustmentValue(forKey: colorRole.id + lightnessAdjustmentKeySuffix)
+            )
+        }
+    }
+
+    private func readColorAdjustmentValue(forKey key: String) -> Int {
+        guard userDefaults.object(forKey: key) != nil else {
+            return 0
+        }
+
+        return clamp(
+            value: userDefaults.integer(forKey: key),
+            fallback: 0,
+            minValue: minimumColorAdjustmentPercent,
+            maxValue: maximumColorAdjustmentPercent
+        )
     }
 
     private func readGpuPollingMultiplier(pollingIntervalInSeconds: TimeInterval, fallback: Int) -> Int {
@@ -185,7 +242,8 @@ func makeDefaultAppConfiguration() -> AppConfiguration {
         uploadColorID: defaultUploadColorID,
         downloadColorID: defaultDownloadColorID,
         baseTextColorID: defaultBaseTextColorID,
-        labelTextColorID: defaultLabelTextColorID
+        labelTextColorID: defaultLabelTextColorID,
+        colorAdjustments: [:]
     )
 }
 
@@ -213,7 +271,8 @@ extension AppConfiguration {
         uploadColorID: String,
         downloadColorID: String,
         baseTextColorID: String,
-        labelTextColorID: String
+        labelTextColorID: String,
+        colorAdjustments: [String: ColorAdjustment]
     ) {
         self.pollingIntervalInSeconds = pollingIntervalInSeconds
         self.isGpuEnabled = isGpuEnabled
@@ -236,13 +295,116 @@ extension AppConfiguration {
         self.downloadColorID = downloadColorID
         self.baseTextColorID = baseTextColorID
         self.labelTextColorID = labelTextColorID
-        yellowColor = getColorPreset(id: yellowColorID)?.color ?? NSColor(srgbRed: 0.72, green: 0.54, blue: 0.00, alpha: 1)
-        warningColor = getColorPreset(id: warningColorID)?.color ?? .systemRed
-        uploadColor = getColorPreset(id: uploadColorID)?.color ?? .systemPurple
-        downloadColor = getColorPreset(id: downloadColorID)?.color ?? .systemBlue
-        baseTextColor = getTextColorPreset(id: baseTextColorID)?.color ?? .white
-        labelTextColor = getTextColorPreset(id: labelTextColorID)?.color ?? .white
+        self.colorAdjustments = colorRoles.reduce(into: [String: ColorAdjustment]()) { colorAdjustmentsByRole, colorRole in
+            let colorAdjustment = getColorAdjustment(colorAdjustments: colorAdjustments, roleID: colorRole.id)
+            colorAdjustmentsByRole[colorRole.id] = ColorAdjustment(
+                huePercent: clamp(value: colorAdjustment.huePercent, fallback: 0, minValue: minimumColorAdjustmentPercent, maxValue: maximumColorAdjustmentPercent),
+                saturationPercent: clamp(value: colorAdjustment.saturationPercent, fallback: 0, minValue: minimumColorAdjustmentPercent, maxValue: maximumColorAdjustmentPercent),
+                lightnessPercent: clamp(value: colorAdjustment.lightnessPercent, fallback: 0, minValue: minimumColorAdjustmentPercent, maxValue: maximumColorAdjustmentPercent)
+            )
+        }
+        yellowColor = applyColorAdjustment(color: getColorPreset(id: yellowColorID)?.color ?? NSColor(srgbRed: 0.72, green: 0.54, blue: 0.00, alpha: 1), colorAdjustment: getColorAdjustment(colorAdjustments: self.colorAdjustments, roleID: yellowColorKey))
+        warningColor = applyColorAdjustment(color: getColorPreset(id: warningColorID)?.color ?? .systemRed, colorAdjustment: getColorAdjustment(colorAdjustments: self.colorAdjustments, roleID: warningColorKey))
+        uploadColor = applyColorAdjustment(color: getColorPreset(id: uploadColorID)?.color ?? .systemPurple, colorAdjustment: getColorAdjustment(colorAdjustments: self.colorAdjustments, roleID: uploadColorKey))
+        downloadColor = applyColorAdjustment(color: getColorPreset(id: downloadColorID)?.color ?? .systemBlue, colorAdjustment: getColorAdjustment(colorAdjustments: self.colorAdjustments, roleID: downloadColorKey))
+        baseTextColor = applyColorAdjustment(color: getTextColorPreset(id: baseTextColorID)?.color ?? .white, colorAdjustment: getColorAdjustment(colorAdjustments: self.colorAdjustments, roleID: baseTextColorKey))
+        labelTextColor = applyColorAdjustment(color: getTextColorPreset(id: labelTextColorID)?.color ?? .white, colorAdjustment: getColorAdjustment(colorAdjustments: self.colorAdjustments, roleID: labelTextColorKey))
     }
+}
+
+func getColorAdjustment(colorAdjustments: [String: ColorAdjustment], roleID: String) -> ColorAdjustment {
+    colorAdjustments[roleID] ?? ColorAdjustment(huePercent: 0, saturationPercent: 0, lightnessPercent: 0)
+}
+
+func applyColorAdjustment(color: NSColor, colorAdjustment: ColorAdjustment) -> NSColor {
+    guard let rgbColor = color.usingColorSpace(.sRGB) else {
+        return color
+    }
+
+    var red: CGFloat = 0
+    var green: CGFloat = 0
+    var blue: CGFloat = 0
+    var alpha: CGFloat = 0
+    rgbColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+    let hslColor = getHslColor(red: red, green: green, blue: blue)
+    let hueOffset = CGFloat(colorAdjustment.huePercent) / 100 * 0.08
+    let saturationOffset = CGFloat(colorAdjustment.saturationPercent) / 100 * 0.35
+    let lightnessOffset = CGFloat(colorAdjustment.lightnessPercent) / 100 * 0.35
+    let adjustedHue = getWrappedHue(hslColor.hue + hueOffset)
+    let adjustedSaturation = clamp(value: hslColor.saturation + saturationOffset, minValue: 0, maxValue: 1)
+    let adjustedLightness = clamp(value: hslColor.lightness + lightnessOffset, minValue: 0.04, maxValue: 0.96)
+    let adjustedRgbColor = getRgbColor(hue: adjustedHue, saturation: adjustedSaturation, lightness: adjustedLightness)
+
+    return NSColor(
+        srgbRed: adjustedRgbColor.red,
+        green: adjustedRgbColor.green,
+        blue: adjustedRgbColor.blue,
+        alpha: alpha
+    )
+}
+
+private func getHslColor(red: CGFloat, green: CGFloat, blue: CGFloat) -> (hue: CGFloat, saturation: CGFloat, lightness: CGFloat) {
+    let maximumValue = max(red, max(green, blue))
+    let minimumValue = min(red, min(green, blue))
+    let lightness = (maximumValue + minimumValue) / 2
+    let delta = maximumValue - minimumValue
+
+    guard delta != 0 else {
+        return (0, 0, lightness)
+    }
+
+    let saturation = delta / (1 - abs(2 * lightness - 1))
+    let hue: CGFloat
+
+    if maximumValue == red {
+        hue = getWrappedHue((green - blue) / delta / 6)
+    } else if maximumValue == green {
+        hue = ((blue - red) / delta + 2) / 6
+    } else {
+        hue = ((red - green) / delta + 4) / 6
+    }
+
+    return (hue, saturation, lightness)
+}
+
+private func getRgbColor(hue: CGFloat, saturation: CGFloat, lightness: CGFloat) -> (red: CGFloat, green: CGFloat, blue: CGFloat) {
+    let chroma = (1 - abs(2 * lightness - 1)) * saturation
+    let hueSegment = hue * 6
+    let secondaryComponent = chroma * (1 - abs(hueSegment.truncatingRemainder(dividingBy: 2) - 1))
+    let matchComponent = lightness - chroma / 2
+    let rgbPrimeColor: (red: CGFloat, green: CGFloat, blue: CGFloat)
+
+    if hueSegment < 1 {
+        rgbPrimeColor = (chroma, secondaryComponent, 0)
+    } else if hueSegment < 2 {
+        rgbPrimeColor = (secondaryComponent, chroma, 0)
+    } else if hueSegment < 3 {
+        rgbPrimeColor = (0, chroma, secondaryComponent)
+    } else if hueSegment < 4 {
+        rgbPrimeColor = (0, secondaryComponent, chroma)
+    } else if hueSegment < 5 {
+        rgbPrimeColor = (secondaryComponent, 0, chroma)
+    } else {
+        rgbPrimeColor = (chroma, 0, secondaryComponent)
+    }
+
+    return (
+        red: rgbPrimeColor.red + matchComponent,
+        green: rgbPrimeColor.green + matchComponent,
+        blue: rgbPrimeColor.blue + matchComponent
+    )
+}
+
+private func getWrappedHue(_ hue: CGFloat) -> CGFloat {
+    if hue < 0 {
+        return hue + 1
+    }
+
+    if hue > 1 {
+        return hue - 1
+    }
+
+    return hue
 }
 
 private func clamp(value: TimeInterval, fallback: TimeInterval, minValue: TimeInterval, maxValue: TimeInterval) -> TimeInterval {
@@ -264,6 +426,18 @@ private func clamp(value: Int, fallback: Int, minValue: Int, maxValue: Int) -> I
 
     if value > maxValue {
         return fallback
+    }
+
+    return value
+}
+
+private func clamp(value: CGFloat, minValue: CGFloat, maxValue: CGFloat) -> CGFloat {
+    if value < minValue {
+        return minValue
+    }
+
+    if value > maxValue {
+        return maxValue
     }
 
     return value

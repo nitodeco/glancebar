@@ -1,13 +1,15 @@
 import AppKit
 
 private let settingsWindowWidth: CGFloat = 360
-private let settingsWindowHeight: CGFloat = 340
+private let settingsWindowHeight: CGFloat = 380
 private let settingsPadding: CGFloat = 16
 private let settingsRowSpacing: CGFloat = 10
 private let settingsSectionPadding: CGFloat = 14
 private let settingsLabelWidth: CGFloat = 128
 private let settingsValueWidth: CGFloat = 44
 private let colorPresetMenuWidth: CGFloat = 150
+private let advancedSliderWidth: CGFloat = 150
+private let advancedPreviewSize: CGFloat = 28
 private let colorSwatchGlyph = "■"
 
 @MainActor
@@ -60,6 +62,16 @@ private final class SettingsView: NSView {
     private let downloadColorMenu = NSPopUpButton()
     private let baseTextColorMenu = NSPopUpButton()
     private let labelTextColorMenu = NSPopUpButton()
+    private let advancedColorRoleMenu = NSPopUpButton()
+    private let advancedHueSlider = NSSlider()
+    private let advancedSaturationSlider = NSSlider()
+    private let advancedLightnessSlider = NSSlider()
+    private let advancedHueValueLabel = NSTextField(labelWithString: "")
+    private let advancedSaturationValueLabel = NSTextField(labelWithString: "")
+    private let advancedLightnessValueLabel = NSTextField(labelWithString: "")
+    private let advancedPreviewView = NSView()
+    private let advancedResetButton = NSButton(title: "Reset", target: nil, action: nil)
+
     init(configuration: AppConfiguration, onChange: @escaping (AppConfiguration) -> Void) {
         self.configuration = configuration
         self.onChange = onChange
@@ -99,6 +111,13 @@ private final class SettingsView: NSView {
             makeColorRow(label: "Download", colorMenu: downloadColorMenu),
             makeColorRow(label: "Base text", colorMenu: baseTextColorMenu),
             makeColorRow(label: "Label text", colorMenu: labelTextColorMenu)
+        ]))
+        tabView.addTabViewItem(makeTabViewItem(label: "Advanced", arrangedSubviews: [
+            makeAdvancedRoleRow(),
+            makeAdvancedSliderRow(label: "Hue", valueLabel: advancedHueValueLabel, slider: advancedHueSlider),
+            makeAdvancedSliderRow(label: "Saturation", valueLabel: advancedSaturationValueLabel, slider: advancedSaturationSlider),
+            makeAdvancedSliderRow(label: "Lightness", valueLabel: advancedLightnessValueLabel, slider: advancedLightnessSlider),
+            makeAdvancedPreviewRow()
         ]))
         configureControls()
     }
@@ -147,6 +166,7 @@ private final class SettingsView: NSView {
         configureColorMenu(downloadColorMenu, presets: colorPresets, action: #selector(updateDownloadColor))
         configureColorMenu(baseTextColorMenu, presets: textColorPresets, action: #selector(updateBaseTextColor))
         configureColorMenu(labelTextColorMenu, presets: textColorPresets, action: #selector(updateLabelTextColor))
+        configureAdvancedControls()
     }
 
     private func makeNumberRow(label: String, valueLabel: NSTextField, stepper: NSStepper) -> NSStackView {
@@ -186,6 +206,51 @@ private final class SettingsView: NSView {
         return row
     }
 
+    private func makeAdvancedRoleRow() -> NSStackView {
+        let row = makeRowStackView()
+        let titleLabel = makeTitleLabel(text: "Edit color")
+        advancedColorRoleMenu.controlSize = .small
+        advancedColorRoleMenu.widthAnchor.constraint(equalToConstant: colorPresetMenuWidth).isActive = true
+
+        row.addArrangedSubview(titleLabel)
+        row.addArrangedSubview(advancedColorRoleMenu)
+
+        return row
+    }
+
+    private func makeAdvancedSliderRow(label: String, valueLabel: NSTextField, slider: NSSlider) -> NSStackView {
+        let row = makeRowStackView()
+        let titleLabel = makeTitleLabel(text: label)
+        valueLabel.alignment = .right
+        valueLabel.widthAnchor.constraint(equalToConstant: settingsValueWidth).isActive = true
+        slider.controlSize = .small
+        slider.widthAnchor.constraint(equalToConstant: advancedSliderWidth).isActive = true
+
+        row.addArrangedSubview(titleLabel)
+        row.addArrangedSubview(valueLabel)
+        row.addArrangedSubview(slider)
+
+        return row
+    }
+
+    private func makeAdvancedPreviewRow() -> NSStackView {
+        let row = makeRowStackView()
+        let titleLabel = makeTitleLabel(text: "Preview")
+        advancedPreviewView.wantsLayer = true
+        advancedPreviewView.widthAnchor.constraint(equalToConstant: advancedPreviewSize).isActive = true
+        advancedPreviewView.heightAnchor.constraint(equalToConstant: advancedPreviewSize).isActive = true
+        advancedPreviewView.layer?.cornerRadius = 6
+        advancedPreviewView.layer?.borderWidth = 1
+        advancedPreviewView.layer?.borderColor = NSColor.separatorColor.cgColor
+        advancedResetButton.controlSize = .small
+
+        row.addArrangedSubview(titleLabel)
+        row.addArrangedSubview(advancedPreviewView)
+        row.addArrangedSubview(advancedResetButton)
+
+        return row
+    }
+
     private func makeRowStackView() -> NSStackView {
         let row = NSStackView()
         row.orientation = .horizontal
@@ -216,6 +281,32 @@ private final class SettingsView: NSView {
             colorMenu.item(withTitle: title)?.representedObject = colorPreset.id
             colorMenu.item(withTitle: title)?.attributedTitle = makeColorPresetTitle(colorPreset: colorPreset)
         }
+    }
+
+    private func configureAdvancedControls() {
+        advancedColorRoleMenu.removeAllItems()
+        advancedColorRoleMenu.target = self
+        advancedColorRoleMenu.action = #selector(updateAdvancedColorRole)
+
+        for colorRole in colorRoles {
+            advancedColorRoleMenu.addItem(withTitle: colorRole.title)
+            advancedColorRoleMenu.item(withTitle: colorRole.title)?.representedObject = colorRole.id
+        }
+
+        configureAdvancedSlider(advancedHueSlider, action: #selector(updateAdvancedColorAdjustment))
+        configureAdvancedSlider(advancedSaturationSlider, action: #selector(updateAdvancedColorAdjustment))
+        configureAdvancedSlider(advancedLightnessSlider, action: #selector(updateAdvancedColorAdjustment))
+        advancedResetButton.target = self
+        advancedResetButton.action = #selector(resetAdvancedColorAdjustment)
+    }
+
+    private func configureAdvancedSlider(_ slider: NSSlider, action: Selector) {
+        slider.minValue = Double(minimumColorAdjustmentPercent)
+        slider.maxValue = Double(maximumColorAdjustmentPercent)
+        slider.numberOfTickMarks = 5
+        slider.allowsTickMarkValuesOnly = false
+        slider.target = self
+        slider.action = action
     }
 
     private func makeColorPresetTitle(colorPreset: ColorPreset) -> NSAttributedString {
@@ -273,7 +364,19 @@ private final class SettingsView: NSView {
         selectColorPreset(id: configuration.downloadColorID, in: downloadColorMenu)
         selectTextColorPreset(id: configuration.baseTextColorID, in: baseTextColorMenu)
         selectTextColorPreset(id: configuration.labelTextColorID, in: labelTextColorMenu)
+        syncAdvancedControls()
+    }
 
+    private func syncAdvancedControls() {
+        let colorRole = selectedColorRole()
+        let colorAdjustment = getColorAdjustment(colorAdjustments: configuration.colorAdjustments, roleID: colorRole.id)
+        advancedHueSlider.integerValue = colorAdjustment.huePercent
+        advancedSaturationSlider.integerValue = colorAdjustment.saturationPercent
+        advancedLightnessSlider.integerValue = colorAdjustment.lightnessPercent
+        advancedHueValueLabel.stringValue = formatSignedPercent(colorAdjustment.huePercent)
+        advancedSaturationValueLabel.stringValue = formatSignedPercent(colorAdjustment.saturationPercent)
+        advancedLightnessValueLabel.stringValue = formatSignedPercent(colorAdjustment.lightnessPercent)
+        advancedPreviewView.layer?.backgroundColor = getAdjustedColor(colorRole: colorRole).cgColor
     }
 
     private func selectColorPreset(id colorID: String, in colorMenu: NSPopUpButton) {
@@ -308,6 +411,56 @@ private final class SettingsView: NSView {
         return getTextColorPreset(id: maybeColorID)?.id ?? fallback
     }
 
+    private func selectedColorRole() -> ColorRole {
+        guard let maybeRoleID = advancedColorRoleMenu.selectedItem?.representedObject as? String else {
+            return colorRoles.first ?? ColorRole(id: yellowColorKey, title: "Yellow", usesTextPresets: false)
+        }
+
+        return colorRoles.first { colorRole in
+            colorRole.id == maybeRoleID
+        } ?? ColorRole(id: yellowColorKey, title: "Yellow", usesTextPresets: false)
+    }
+
+    private func getAdjustedColor(colorRole: ColorRole) -> NSColor {
+        let colorID = getColorID(colorRole: colorRole)
+        let colorPreset = colorRole.usesTextPresets ? getTextColorPreset(id: colorID) : getColorPreset(id: colorID)
+        let colorAdjustment = getColorAdjustment(colorAdjustments: configuration.colorAdjustments, roleID: colorRole.id)
+
+        return applyColorAdjustment(color: colorPreset?.color ?? .white, colorAdjustment: colorAdjustment)
+    }
+
+    private func getColorID(colorRole: ColorRole) -> String {
+        if colorRole.id == yellowColorKey {
+            return configuration.yellowColorID
+        }
+
+        if colorRole.id == warningColorKey {
+            return configuration.warningColorID
+        }
+
+        if colorRole.id == uploadColorKey {
+            return configuration.uploadColorID
+        }
+
+        if colorRole.id == downloadColorKey {
+            return configuration.downloadColorID
+        }
+
+        if colorRole.id == baseTextColorKey {
+            return configuration.baseTextColorID
+        }
+
+        return configuration.labelTextColorID
+    }
+
+    private func formatSignedPercent(_ value: Int) -> String {
+        if value > 0 {
+            return "+\(value)"
+        }
+
+        return "\(value)"
+    }
+
     private func makeConfiguration(
         pollingIntervalInSeconds: TimeInterval? = nil,
         isGpuEnabled: Bool? = nil,
@@ -319,7 +472,8 @@ private final class SettingsView: NSView {
         uploadColorID: String? = nil,
         downloadColorID: String? = nil,
         baseTextColorID: String? = nil,
-        labelTextColorID: String? = nil
+        labelTextColorID: String? = nil,
+        colorAdjustments: [String: ColorAdjustment]? = nil
     ) -> AppConfiguration {
         AppConfiguration(
             pollingIntervalInSeconds: pollingIntervalInSeconds ?? configuration.pollingIntervalInSeconds,
@@ -332,7 +486,8 @@ private final class SettingsView: NSView {
             uploadColorID: uploadColorID ?? configuration.uploadColorID,
             downloadColorID: downloadColorID ?? configuration.downloadColorID,
             baseTextColorID: baseTextColorID ?? configuration.baseTextColorID,
-            labelTextColorID: labelTextColorID ?? configuration.labelTextColorID
+            labelTextColorID: labelTextColorID ?? configuration.labelTextColorID,
+            colorAdjustments: colorAdjustments ?? configuration.colorAdjustments
         )
     }
 
@@ -368,31 +523,62 @@ private final class SettingsView: NSView {
 
     @objc private func updateYellowColor() {
         configuration = makeConfiguration(yellowColorID: selectedColorID(in: yellowColorMenu, fallback: configuration.yellowColorID))
+        syncControls()
         onChange(configuration)
     }
 
     @objc private func updateWarningColor() {
         configuration = makeConfiguration(warningColorID: selectedColorID(in: warningColorMenu, fallback: configuration.warningColorID))
+        syncControls()
         onChange(configuration)
     }
 
     @objc private func updateUploadColor() {
         configuration = makeConfiguration(uploadColorID: selectedColorID(in: uploadColorMenu, fallback: configuration.uploadColorID))
+        syncControls()
         onChange(configuration)
     }
 
     @objc private func updateDownloadColor() {
         configuration = makeConfiguration(downloadColorID: selectedColorID(in: downloadColorMenu, fallback: configuration.downloadColorID))
+        syncControls()
         onChange(configuration)
     }
 
     @objc private func updateBaseTextColor() {
         configuration = makeConfiguration(baseTextColorID: selectedTextColorID(in: baseTextColorMenu, fallback: configuration.baseTextColorID))
+        syncControls()
         onChange(configuration)
     }
 
     @objc private func updateLabelTextColor() {
         configuration = makeConfiguration(labelTextColorID: selectedTextColorID(in: labelTextColorMenu, fallback: configuration.labelTextColorID))
+        syncControls()
+        onChange(configuration)
+    }
+
+    @objc private func updateAdvancedColorRole() {
+        syncAdvancedControls()
+    }
+
+    @objc private func updateAdvancedColorAdjustment() {
+        let colorRole = selectedColorRole()
+        var colorAdjustments = configuration.colorAdjustments
+        colorAdjustments[colorRole.id] = ColorAdjustment(
+            huePercent: advancedHueSlider.integerValue,
+            saturationPercent: advancedSaturationSlider.integerValue,
+            lightnessPercent: advancedLightnessSlider.integerValue
+        )
+        configuration = makeConfiguration(colorAdjustments: colorAdjustments)
+        syncAdvancedControls()
+        onChange(configuration)
+    }
+
+    @objc private func resetAdvancedColorAdjustment() {
+        var colorAdjustments = configuration.colorAdjustments
+        colorAdjustments[selectedColorRole().id] = ColorAdjustment(huePercent: 0, saturationPercent: 0, lightnessPercent: 0)
+        configuration = makeConfiguration(colorAdjustments: colorAdjustments)
+        syncAdvancedControls()
         onChange(configuration)
     }
 
