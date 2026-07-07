@@ -19,6 +19,8 @@ let colorPresets = [
 private let pollingIntervalKey = "pollingIntervalInSeconds"
 private let isGpuEnabledKey = "isGpuEnabled"
 private let gpuPollingIntervalKey = "gpuPollingIntervalInSeconds"
+private let yellowThresholdKey = "yellowThresholdPercent"
+private let yellowColorKey = "yellowColor"
 private let warningThresholdKey = "warningThresholdPercent"
 private let warningColorKey = "warningColor"
 private let uploadColorKey = "uploadColor"
@@ -26,6 +28,8 @@ private let downloadColorKey = "downloadColor"
 private let defaultPollingIntervalInSeconds: TimeInterval = 3
 private let defaultIsGpuEnabled = false
 private let defaultGpuPollingIntervalInSeconds: TimeInterval = 3
+private let defaultYellowThresholdPercent = 60
+private let defaultYellowColorID = "yellow"
 private let defaultWarningThresholdPercent = 80
 private let defaultWarningColorID = "red"
 private let defaultUploadColorID = "purple"
@@ -35,10 +39,13 @@ struct AppConfiguration {
     let pollingIntervalInSeconds: TimeInterval
     let isGpuEnabled: Bool
     let gpuPollingIntervalInSeconds: TimeInterval
+    let yellowThresholdPercent: Int
+    let yellowColorID: String
     let warningThresholdPercent: Int
     let warningColorID: String
     let uploadColorID: String
     let downloadColorID: String
+    let yellowColor: NSColor
     let warningColor: NSColor
     let uploadColor: NSColor
     let downloadColor: NSColor
@@ -78,11 +85,19 @@ final class AppConfigurationStore {
             minValue: minimumWarningThresholdPercent,
             maxValue: maximumWarningThresholdPercent
         )
+        let yellowThresholdPercent = clamp(
+            value: userDefaults.integer(forKey: yellowThresholdKey),
+            fallback: defaultConfiguration.yellowThresholdPercent,
+            minValue: minimumWarningThresholdPercent,
+            maxValue: max(minimumWarningThresholdPercent, warningThresholdPercent - 1)
+        )
 
         return AppConfiguration(
             pollingIntervalInSeconds: pollingIntervalInSeconds,
             isGpuEnabled: userDefaults.object(forKey: isGpuEnabledKey) as? Bool ?? defaultConfiguration.isGpuEnabled,
             gpuPollingIntervalInSeconds: gpuPollingIntervalInSeconds,
+            yellowThresholdPercent: yellowThresholdPercent,
+            yellowColorID: readColorID(forKey: yellowColorKey, fallback: defaultConfiguration.yellowColorID),
             warningThresholdPercent: warningThresholdPercent,
             warningColorID: readColorID(forKey: warningColorKey, fallback: defaultConfiguration.warningColorID),
             uploadColorID: readColorID(forKey: uploadColorKey, fallback: defaultConfiguration.uploadColorID),
@@ -94,6 +109,8 @@ final class AppConfigurationStore {
         userDefaults.set(configuration.pollingIntervalInSeconds, forKey: pollingIntervalKey)
         userDefaults.set(configuration.isGpuEnabled, forKey: isGpuEnabledKey)
         userDefaults.set(configuration.gpuPollingIntervalInSeconds, forKey: gpuPollingIntervalKey)
+        userDefaults.set(configuration.yellowThresholdPercent, forKey: yellowThresholdKey)
+        userDefaults.set(configuration.yellowColorID, forKey: yellowColorKey)
         userDefaults.set(configuration.warningThresholdPercent, forKey: warningThresholdKey)
         userDefaults.set(configuration.warningColorID, forKey: warningColorKey)
         userDefaults.set(configuration.uploadColorID, forKey: uploadColorKey)
@@ -112,6 +129,8 @@ func makeDefaultAppConfiguration() -> AppConfiguration {
         pollingIntervalInSeconds: defaultPollingIntervalInSeconds,
         isGpuEnabled: defaultIsGpuEnabled,
         gpuPollingIntervalInSeconds: defaultGpuPollingIntervalInSeconds,
+        yellowThresholdPercent: defaultYellowThresholdPercent,
+        yellowColorID: defaultYellowColorID,
         warningThresholdPercent: defaultWarningThresholdPercent,
         warningColorID: defaultWarningColorID,
         uploadColorID: defaultUploadColorID,
@@ -130,6 +149,8 @@ extension AppConfiguration {
         pollingIntervalInSeconds: TimeInterval,
         isGpuEnabled: Bool,
         gpuPollingIntervalInSeconds: TimeInterval,
+        yellowThresholdPercent: Int,
+        yellowColorID: String,
         warningThresholdPercent: Int,
         warningColorID: String,
         uploadColorID: String,
@@ -138,10 +159,18 @@ extension AppConfiguration {
         self.pollingIntervalInSeconds = pollingIntervalInSeconds
         self.isGpuEnabled = isGpuEnabled
         self.gpuPollingIntervalInSeconds = gpuPollingIntervalInSeconds
-        self.warningThresholdPercent = warningThresholdPercent
+        self.warningThresholdPercent = clamp(value: warningThresholdPercent, fallback: defaultWarningThresholdPercent, minValue: minimumWarningThresholdPercent, maxValue: maximumWarningThresholdPercent)
+        self.yellowThresholdPercent = clamp(
+            value: yellowThresholdPercent,
+            fallback: defaultYellowThresholdPercent,
+            minValue: minimumWarningThresholdPercent,
+            maxValue: max(minimumWarningThresholdPercent, self.warningThresholdPercent - 1)
+        )
+        self.yellowColorID = yellowColorID
         self.warningColorID = warningColorID
         self.uploadColorID = uploadColorID
         self.downloadColorID = downloadColorID
+        yellowColor = getColorPreset(id: yellowColorID)?.color ?? NSColor(srgbRed: 0.72, green: 0.54, blue: 0.00, alpha: 1)
         warningColor = getColorPreset(id: warningColorID)?.color ?? .systemRed
         uploadColor = getColorPreset(id: uploadColorID)?.color ?? .systemPurple
         downloadColor = getColorPreset(id: downloadColorID)?.color ?? .systemBlue

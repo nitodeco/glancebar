@@ -51,8 +51,9 @@ CPU   GPU   RAM   SSD    ↑ 3 KB/s
 - Polling interval.
 - GPU enabled.
 - GPU polling interval.
-- Threshold when CPU, GPU, RAM, and SSD values use the warning color.
-- Warning color preset for CPU, GPU, RAM, and SSD values above the threshold.
+- Yellow threshold when CPU, GPU, RAM, and SSD values use the yellow indicator color.
+- Red threshold when CPU, GPU, RAM, and SSD values use the red indicator color.
+- Yellow and red indicator color presets.
 - Upload and download color presets for network values.
 
 ## Non-Goals

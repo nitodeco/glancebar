@@ -102,6 +102,10 @@ final class StatusMetricsView: NSView {
             return configuration.warningColor
         }
 
+        if percent > configuration.yellowThresholdPercent {
+            return configuration.yellowColor
+        }
+
         return .labelColor
     }
 }

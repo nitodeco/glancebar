@@ -46,9 +46,9 @@ swift test
 - CPU, RAM, and network throughput update every 3 seconds.
 - GPU display is optional and has its own polling interval.
 - SSD usage updates every 30 seconds.
-- CPU, GPU, RAM, and SSD values turn red above 80 percent.
+- CPU, GPU, RAM, and SSD values turn yellow above 60 percent and red above 80 percent by default.
 - Upload is purple, download is blue.
-- Polling interval, GPU polling interval, warning threshold, warning color preset, upload color preset, and download color preset are configurable.
+- Polling interval, GPU polling interval, yellow threshold, red threshold, indicator color presets, upload color preset, and download color preset are configurable.
 
 ## License
 
