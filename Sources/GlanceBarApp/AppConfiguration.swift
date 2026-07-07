@@ -8,6 +8,18 @@ let minimumWarningThresholdPercent = 1
 let maximumWarningThresholdPercent = 100
 let minimumColorAdjustmentPercent = -100
 let maximumColorAdjustmentPercent = 100
+let cpuMetricID = "cpu"
+let gpuMetricID = "gpu"
+let ramMetricID = "ram"
+let ssdMetricID = "ssd"
+let networkMetricID = "network"
+let availableMetrics = [
+    MetricConfiguration(id: cpuMetricID, title: "CPU", shortLabel: "CPU"),
+    MetricConfiguration(id: gpuMetricID, title: "GPU", shortLabel: "GPU"),
+    MetricConfiguration(id: ramMetricID, title: "RAM", shortLabel: "RAM"),
+    MetricConfiguration(id: ssdMetricID, title: "SSD", shortLabel: "SSD"),
+    MetricConfiguration(id: networkMetricID, title: "Network", shortLabel: "NET")
+]
 let colorPresets = [
     ColorPreset(id: "red", title: "Red", color: NSColor(srgbRed: 0.86, green: 0.04, blue: 0.08, alpha: 1)),
     ColorPreset(id: "orange", title: "Orange", color: NSColor(srgbRed: 0.88, green: 0.28, blue: 0.00, alpha: 1)),
@@ -26,6 +38,8 @@ let textColorPresets = [
 
 private let pollingIntervalKey = "pollingIntervalInSeconds"
 private let isGpuEnabledKey = "isGpuEnabled"
+private let enabledMetricIDsKey = "enabledMetricIDs"
+private let orderedMetricIDsKey = "orderedMetricIDs"
 private let gpuPollingMultiplierKey = "gpuPollingMultiplier"
 private let legacyGpuPollingIntervalKey = "gpuPollingIntervalInSeconds"
 private let yellowThresholdKey = "yellowThresholdPercent"
@@ -40,7 +54,8 @@ private let hueAdjustmentKeySuffix = "HueAdjustment"
 private let saturationAdjustmentKeySuffix = "SaturationAdjustment"
 private let lightnessAdjustmentKeySuffix = "LightnessAdjustment"
 private let defaultPollingIntervalInSeconds: TimeInterval = 3
-private let defaultIsGpuEnabled = false
+private let defaultEnabledMetricIDs = [cpuMetricID, ramMetricID, ssdMetricID, networkMetricID]
+private let defaultOrderedMetricIDs = [cpuMetricID, gpuMetricID, ramMetricID, ssdMetricID, networkMetricID]
 private let defaultGpuPollingMultiplier = 2
 private let defaultYellowThresholdPercent = 60
 private let defaultYellowColorID = "yellow"
@@ -54,6 +69,8 @@ private let defaultLabelTextColorID = "white"
 struct AppConfiguration {
     let pollingIntervalInSeconds: TimeInterval
     let isGpuEnabled: Bool
+    let enabledMetricIDs: Set<String>
+    let orderedMetricIDs: [String]
     let gpuPollingMultiplier: Int
     let yellowThresholdPercent: Int
     let yellowColorID: String
@@ -76,6 +93,12 @@ struct ColorPreset {
     let id: String
     let title: String
     let color: NSColor
+}
+
+struct MetricConfiguration: Equatable {
+    let id: String
+    let title: String
+    let shortLabel: String
 }
 
 struct ColorAdjustment: Equatable {
@@ -134,7 +157,8 @@ final class AppConfigurationStore {
 
         return AppConfiguration(
             pollingIntervalInSeconds: pollingIntervalInSeconds,
-            isGpuEnabled: userDefaults.object(forKey: isGpuEnabledKey) as? Bool ?? defaultConfiguration.isGpuEnabled,
+            enabledMetricIDs: readEnabledMetricIDs(defaultConfiguration: defaultConfiguration),
+            orderedMetricIDs: readOrderedMetricIDs(defaultConfiguration: defaultConfiguration),
             gpuPollingMultiplier: gpuPollingMultiplier,
             yellowThresholdPercent: yellowThresholdPercent,
             yellowColorID: readColorID(forKey: yellowColorKey, fallback: defaultConfiguration.yellowColorID),
@@ -151,6 +175,8 @@ final class AppConfigurationStore {
     func save(_ configuration: AppConfiguration) {
         userDefaults.set(configuration.pollingIntervalInSeconds, forKey: pollingIntervalKey)
         userDefaults.set(configuration.isGpuEnabled, forKey: isGpuEnabledKey)
+        userDefaults.set(Array(configuration.enabledMetricIDs), forKey: enabledMetricIDsKey)
+        userDefaults.set(configuration.orderedMetricIDs, forKey: orderedMetricIDsKey)
         userDefaults.set(configuration.gpuPollingMultiplier, forKey: gpuPollingMultiplierKey)
         userDefaults.set(configuration.yellowThresholdPercent, forKey: yellowThresholdKey)
         userDefaults.set(configuration.yellowColorID, forKey: yellowColorKey)
@@ -178,6 +204,33 @@ final class AppConfigurationStore {
         let maybeColorID = userDefaults.string(forKey: key)
 
         return getTextColorPreset(id: maybeColorID)?.id ?? fallback
+    }
+
+    private func readEnabledMetricIDs(defaultConfiguration: AppConfiguration) -> Set<String> {
+        guard let maybeEnabledMetricIDs = userDefaults.stringArray(forKey: enabledMetricIDsKey) else {
+            var enabledMetricIDs = defaultConfiguration.enabledMetricIDs
+
+            if userDefaults.object(forKey: isGpuEnabledKey) as? Bool ?? defaultConfiguration.isGpuEnabled {
+                enabledMetricIDs.insert(gpuMetricID)
+            }
+
+            return enabledMetricIDs
+        }
+
+        let availableMetricIDs = Set(availableMetrics.map(\.id))
+        let enabledMetricIDs = Set(maybeEnabledMetricIDs.filter { metricID in
+            availableMetricIDs.contains(metricID)
+        })
+
+        return enabledMetricIDs
+    }
+
+    private func readOrderedMetricIDs(defaultConfiguration: AppConfiguration) -> [String] {
+        guard let maybeOrderedMetricIDs = userDefaults.stringArray(forKey: orderedMetricIDsKey) else {
+            return defaultConfiguration.orderedMetricIDs
+        }
+
+        return normalizeMetricOrder(metricIDs: maybeOrderedMetricIDs)
     }
 
     private func readColorAdjustments() -> [String: ColorAdjustment] {
@@ -233,7 +286,8 @@ final class AppConfigurationStore {
 func makeDefaultAppConfiguration() -> AppConfiguration {
     AppConfiguration(
         pollingIntervalInSeconds: defaultPollingIntervalInSeconds,
-        isGpuEnabled: defaultIsGpuEnabled,
+        enabledMetricIDs: Set(defaultEnabledMetricIDs),
+        orderedMetricIDs: defaultOrderedMetricIDs,
         gpuPollingMultiplier: defaultGpuPollingMultiplier,
         yellowThresholdPercent: defaultYellowThresholdPercent,
         yellowColorID: defaultYellowColorID,
@@ -262,7 +316,8 @@ func getTextColorPreset(id maybeColorID: String?) -> ColorPreset? {
 extension AppConfiguration {
     init(
         pollingIntervalInSeconds: TimeInterval,
-        isGpuEnabled: Bool,
+        enabledMetricIDs: Set<String>,
+        orderedMetricIDs: [String],
         gpuPollingMultiplier: Int,
         yellowThresholdPercent: Int,
         yellowColorID: String,
@@ -275,7 +330,9 @@ extension AppConfiguration {
         colorAdjustments: [String: ColorAdjustment]
     ) {
         self.pollingIntervalInSeconds = pollingIntervalInSeconds
-        self.isGpuEnabled = isGpuEnabled
+        self.enabledMetricIDs = normalizeEnabledMetricIDs(metricIDs: enabledMetricIDs)
+        self.orderedMetricIDs = normalizeMetricOrder(metricIDs: orderedMetricIDs)
+        isGpuEnabled = self.enabledMetricIDs.contains(gpuMetricID)
         self.gpuPollingMultiplier = clamp(
             value: gpuPollingMultiplier,
             fallback: defaultGpuPollingMultiplier,
@@ -310,6 +367,36 @@ extension AppConfiguration {
         baseTextColor = applyColorAdjustment(color: getTextColorPreset(id: baseTextColorID)?.color ?? .white, colorAdjustment: getColorAdjustment(colorAdjustments: self.colorAdjustments, roleID: baseTextColorKey))
         labelTextColor = applyColorAdjustment(color: getTextColorPreset(id: labelTextColorID)?.color ?? .white, colorAdjustment: getColorAdjustment(colorAdjustments: self.colorAdjustments, roleID: labelTextColorKey))
     }
+}
+
+func getMetricConfiguration(id maybeMetricID: String) -> MetricConfiguration? {
+    availableMetrics.first { metricConfiguration in
+        metricConfiguration.id == maybeMetricID
+    }
+}
+
+func normalizeMetricOrder(metricIDs: [String]) -> [String] {
+    let availableMetricIDs = Set(availableMetrics.map(\.id))
+    let requestedMetricIDs = metricIDs.filter { metricID in
+        availableMetricIDs.contains(metricID)
+    }
+    let uniqueRequestedMetricIDs = requestedMetricIDs.reduce(into: [String]()) { orderedMetricIDs, metricID in
+        guard !orderedMetricIDs.contains(metricID) else {
+            return
+        }
+
+        orderedMetricIDs.append(metricID)
+    }
+    let missingMetricIDs = availableMetrics.map(\.id).filter { metricID in
+        !uniqueRequestedMetricIDs.contains(metricID)
+    }
+
+    return uniqueRequestedMetricIDs + missingMetricIDs
+}
+
+func normalizeEnabledMetricIDs(metricIDs: Set<String>) -> Set<String> {
+    let availableMetricIDs = Set(availableMetrics.map(\.id))
+    return metricIDs.intersection(availableMetricIDs)
 }
 
 func getColorAdjustment(colorAdjustments: [String: ColorAdjustment], roleID: String) -> ColorAdjustment {

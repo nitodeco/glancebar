@@ -1,13 +1,9 @@
 import AppKit
 import GlanceBarCore
 
-private let ramColumnX: CGFloat = 36
-private let ssdColumnX: CGFloat = 72
-private let networkColumnX: CGFloat = 102
-private let enabledGpuColumnX: CGFloat = 36
-private let enabledRamColumnX: CGFloat = 72
-private let enabledSsdColumnX: CGFloat = 108
-private let enabledNetworkColumnX: CGFloat = 138
+private let metricColumnWidth: CGFloat = 36
+private let metricColumnSpacing: CGFloat = 0
+private let networkColumnWidth: CGFloat = 58
 private let labelY: CGFloat = 12
 private let valueY: CGFloat = 2
 private let labelFontSize: CGFloat = 8
@@ -18,7 +14,9 @@ private let networkUnitXOffset: CGFloat = 36
 
 final class StatusMetricsView: NSView {
     static func preferredSize(configuration: AppConfiguration) -> NSSize {
-        NSSize(width: configuration.isGpuEnabled ? 196 : 160, height: 24)
+        NSSize(width: max(1, getEnabledMetrics(configuration: configuration).reduce(CGFloat(0)) { width, metricConfiguration in
+            width + getMetricWidth(metricID: metricConfiguration.id) + metricColumnSpacing
+        }), height: 24)
     }
 
     var configuration = makeDefaultAppConfiguration() {
@@ -51,21 +49,59 @@ final class StatusMetricsView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
-        drawColumn(label: "CPU", value: "\(snapshot.cpuUsagePercent)%", percent: snapshot.cpuUsagePercent, x: 0)
+        var metricX: CGFloat = 0
 
-        if configuration.isGpuEnabled {
-            let gpuUsagePercent = snapshot.gpuUsagePercent ?? 0
-            drawColumn(label: "GPU", value: "\(gpuUsagePercent)%", percent: gpuUsagePercent, x: enabledGpuColumnX)
-            drawColumn(label: "RAM", value: "\(snapshot.ramUsagePercent)%", percent: snapshot.ramUsagePercent, x: enabledRamColumnX)
-            drawColumn(label: "SSD", value: "\(snapshot.ssdUsagePercent)%", percent: snapshot.ssdUsagePercent, x: enabledSsdColumnX)
-            drawNetwork(x: enabledNetworkColumnX)
+        for metricConfiguration in Self.getEnabledMetrics(configuration: configuration) {
+            drawMetric(metricID: metricConfiguration.id, x: metricX)
+            metricX += Self.getMetricWidth(metricID: metricConfiguration.id) + metricColumnSpacing
+        }
+    }
+
+    private static func getEnabledMetrics(configuration: AppConfiguration) -> [MetricConfiguration] {
+        configuration.orderedMetricIDs.compactMap { metricID in
+            guard configuration.enabledMetricIDs.contains(metricID) else {
+                return nil
+            }
+
+            return getMetricConfiguration(id: metricID)
+        }
+    }
+
+    private static func getMetricWidth(metricID: String) -> CGFloat {
+        if metricID == networkMetricID {
+            return networkColumnWidth
+        }
+
+        return metricColumnWidth
+    }
+
+    private func drawMetric(metricID: String, x: CGFloat) {
+        if metricID == cpuMetricID {
+            drawColumn(label: "CPU", value: "\(snapshot.cpuUsagePercent)%", percent: snapshot.cpuUsagePercent, x: x)
 
             return
         }
 
-        drawColumn(label: "RAM", value: "\(snapshot.ramUsagePercent)%", percent: snapshot.ramUsagePercent, x: ramColumnX)
-        drawColumn(label: "SSD", value: "\(snapshot.ssdUsagePercent)%", percent: snapshot.ssdUsagePercent, x: ssdColumnX)
-        drawNetwork(x: networkColumnX)
+        if metricID == gpuMetricID {
+            let gpuUsagePercent = snapshot.gpuUsagePercent ?? 0
+            drawColumn(label: "GPU", value: "\(gpuUsagePercent)%", percent: gpuUsagePercent, x: x)
+
+            return
+        }
+
+        if metricID == ramMetricID {
+            drawColumn(label: "RAM", value: "\(snapshot.ramUsagePercent)%", percent: snapshot.ramUsagePercent, x: x)
+
+            return
+        }
+
+        if metricID == ssdMetricID {
+            drawColumn(label: "SSD", value: "\(snapshot.ssdUsagePercent)%", percent: snapshot.ssdUsagePercent, x: x)
+
+            return
+        }
+
+        drawNetwork(x: x)
     }
 
     private func drawColumn(label: String, value: String, percent: Int, x: CGFloat) {

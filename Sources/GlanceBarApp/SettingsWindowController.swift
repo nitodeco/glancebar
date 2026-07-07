@@ -51,7 +51,6 @@ private final class SettingsView: NSView {
     private let gpuMultiplierValueLabel = NSTextField(labelWithString: "")
     private let yellowThresholdValueLabel = NSTextField(labelWithString: "")
     private let thresholdValueLabel = NSTextField(labelWithString: "")
-    private let gpuEnabledButton = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let pollingStepper = NSStepper()
     private let gpuMultiplierStepper = NSStepper()
     private let yellowThresholdStepper = NSStepper()
@@ -99,10 +98,10 @@ private final class SettingsView: NSView {
 
         tabView.addTabViewItem(makeTabViewItem(label: "Metrics", arrangedSubviews: [
             makeNumberRow(label: "Polling", valueLabel: pollingValueLabel, stepper: pollingStepper),
-            makeCheckboxRow(label: "GPU", checkbox: gpuEnabledButton),
             makeNumberRow(label: "GPU every", valueLabel: gpuMultiplierValueLabel, stepper: gpuMultiplierStepper),
             makeNumberRow(label: "Yellow above", valueLabel: yellowThresholdValueLabel, stepper: yellowThresholdStepper),
-            makeNumberRow(label: "Red above", valueLabel: thresholdValueLabel, stepper: thresholdStepper)
+            makeNumberRow(label: "Red above", valueLabel: thresholdValueLabel, stepper: thresholdStepper),
+            makeMetricRows()
         ]))
         tabView.addTabViewItem(makeTabViewItem(label: "Colors", arrangedSubviews: [
             makeColorRow(label: "Yellow", colorMenu: yellowColorMenu),
@@ -152,8 +151,6 @@ private final class SettingsView: NSView {
     private func configureControls() {
         pollingStepper.target = self
         pollingStepper.action = #selector(updatePollingInterval)
-        gpuEnabledButton.target = self
-        gpuEnabledButton.action = #selector(updateGpuEnabled)
         gpuMultiplierStepper.target = self
         gpuMultiplierStepper.action = #selector(updateGpuPollingMultiplier)
         yellowThresholdStepper.target = self
@@ -190,6 +187,48 @@ private final class SettingsView: NSView {
 
         row.addArrangedSubview(titleLabel)
         row.addArrangedSubview(checkbox)
+
+        return row
+    }
+
+    private func makeMetricRows() -> NSStackView {
+        let stackView = NSStackView()
+        stackView.orientation = .vertical
+        stackView.alignment = .leading
+        stackView.spacing = 6
+
+        for metricID in configuration.orderedMetricIDs {
+            guard let metricConfiguration = getMetricConfiguration(id: metricID) else {
+                continue
+            }
+
+            stackView.addArrangedSubview(makeMetricRow(metricConfiguration: metricConfiguration))
+        }
+
+        return stackView
+    }
+
+    private func makeMetricRow(metricConfiguration: MetricConfiguration) -> NSStackView {
+        let row = makeRowStackView()
+        let titleLabel = makeTitleLabel(text: metricConfiguration.title)
+        let checkbox = NSButton(checkboxWithTitle: "", target: self, action: #selector(updateMetricEnabled))
+        checkbox.controlSize = .small
+        checkbox.state = configuration.enabledMetricIDs.contains(metricConfiguration.id) ? .on : .off
+        checkbox.tag = getMetricTag(metricID: metricConfiguration.id)
+        let upButton = NSButton(title: "Up", target: self, action: #selector(moveMetricUp))
+        let downButton = NSButton(title: "Down", target: self, action: #selector(moveMetricDown))
+        let maybeMetricIndex = configuration.orderedMetricIDs.firstIndex(of: metricConfiguration.id)
+        upButton.controlSize = .small
+        upButton.tag = getMetricTag(metricID: metricConfiguration.id)
+        upButton.isEnabled = maybeMetricIndex != configuration.orderedMetricIDs.startIndex
+        downButton.controlSize = .small
+        downButton.tag = getMetricTag(metricID: metricConfiguration.id)
+        downButton.isEnabled = maybeMetricIndex != configuration.orderedMetricIDs.index(before: configuration.orderedMetricIDs.endIndex)
+
+        row.addArrangedSubview(titleLabel)
+        row.addArrangedSubview(checkbox)
+        row.addArrangedSubview(upButton)
+        row.addArrangedSubview(downButton)
 
         return row
     }
@@ -337,7 +376,6 @@ private final class SettingsView: NSView {
         pollingStepper.doubleValue = configuration.pollingIntervalInSeconds
         pollingValueLabel.stringValue = "\(Int(configuration.pollingIntervalInSeconds))s"
 
-        gpuEnabledButton.state = configuration.isGpuEnabled ? .on : .off
         gpuMultiplierStepper.minValue = Double(minimumGpuPollingMultiplier)
         gpuMultiplierStepper.maxValue = Double(maximumGpuPollingMultiplier)
         gpuMultiplierStepper.increment = 1
@@ -461,9 +499,22 @@ private final class SettingsView: NSView {
         return "\(value)"
     }
 
+    private func getMetricTag(metricID: String) -> Int {
+        availableMetrics.firstIndex { metricConfiguration in
+            metricConfiguration.id == metricID
+        } ?? -1
+    }
+
+    private func getMetricID(tag: Int) -> String? {
+        availableMetrics.enumerated().first { metricOffset, _ in
+            metricOffset == tag
+        }?.element.id
+    }
+
     private func makeConfiguration(
         pollingIntervalInSeconds: TimeInterval? = nil,
-        isGpuEnabled: Bool? = nil,
+        enabledMetricIDs: Set<String>? = nil,
+        orderedMetricIDs: [String]? = nil,
         gpuPollingMultiplier: Int? = nil,
         yellowThresholdPercent: Int? = nil,
         yellowColorID: String? = nil,
@@ -477,7 +528,8 @@ private final class SettingsView: NSView {
     ) -> AppConfiguration {
         AppConfiguration(
             pollingIntervalInSeconds: pollingIntervalInSeconds ?? configuration.pollingIntervalInSeconds,
-            isGpuEnabled: isGpuEnabled ?? configuration.isGpuEnabled,
+            enabledMetricIDs: enabledMetricIDs ?? configuration.enabledMetricIDs,
+            orderedMetricIDs: orderedMetricIDs ?? configuration.orderedMetricIDs,
             gpuPollingMultiplier: gpuPollingMultiplier ?? configuration.gpuPollingMultiplier,
             yellowThresholdPercent: yellowThresholdPercent ?? configuration.yellowThresholdPercent,
             yellowColorID: yellowColorID ?? configuration.yellowColorID,
@@ -493,12 +545,6 @@ private final class SettingsView: NSView {
 
     @objc private func updatePollingInterval() {
         configuration = makeConfiguration(pollingIntervalInSeconds: pollingStepper.doubleValue)
-        syncControls()
-        onChange(configuration)
-    }
-
-    @objc private func updateGpuEnabled() {
-        configuration = makeConfiguration(isGpuEnabled: gpuEnabledButton.state == .on)
         syncControls()
         onChange(configuration)
     }
@@ -580,6 +626,53 @@ private final class SettingsView: NSView {
         configuration = makeConfiguration(colorAdjustments: colorAdjustments)
         syncAdvancedControls()
         onChange(configuration)
+    }
+
+    @objc private func updateMetricEnabled(_ sender: NSButton) {
+        guard let maybeMetricID = getMetricID(tag: sender.tag) else {
+            return
+        }
+
+        var enabledMetricIDs = configuration.enabledMetricIDs
+
+        if sender.state == .on {
+            enabledMetricIDs.insert(maybeMetricID)
+        } else {
+            enabledMetricIDs.remove(maybeMetricID)
+        }
+
+        configuration = makeConfiguration(enabledMetricIDs: enabledMetricIDs)
+        rebuildSettingsView()
+        onChange(configuration)
+    }
+
+    @objc private func moveMetricUp(_ sender: NSButton) {
+        moveMetric(sender: sender, offset: -1)
+    }
+
+    @objc private func moveMetricDown(_ sender: NSButton) {
+        moveMetric(sender: sender, offset: 1)
+    }
+
+    private func moveMetric(sender: NSButton, offset: Int) {
+        guard let maybeMetricID = getMetricID(tag: sender.tag), let metricIndex = configuration.orderedMetricIDs.firstIndex(of: maybeMetricID) else {
+            return
+        }
+
+        let targetMetricIndex = configuration.orderedMetricIDs.index(metricIndex, offsetBy: offset)
+        var orderedMetricIDs = configuration.orderedMetricIDs
+        orderedMetricIDs.swapAt(metricIndex, targetMetricIndex)
+        configuration = makeConfiguration(orderedMetricIDs: orderedMetricIDs)
+        rebuildSettingsView()
+        onChange(configuration)
+    }
+
+    private func rebuildSettingsView() {
+        for subview in subviews {
+            subview.removeFromSuperview()
+        }
+        buildView()
+        syncControls()
     }
 
 }
