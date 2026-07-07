@@ -40,8 +40,15 @@ CPU   RAM   SSD    ↑ 3 KB/s
 
 ## Interaction
 
-- Clicking the menu bar item opens a tiny menu with only Quit.
+- Clicking the menu bar item opens a tiny settings menu with Quit.
 - No popover or secondary dashboard.
+
+## Settings
+
+- Polling interval.
+- Threshold when CPU, RAM, and SSD values use the warning color.
+- Warning color for CPU, RAM, and SSD values above the threshold.
+- Upload and download colors for network values.
 
 ## Non-Goals
 

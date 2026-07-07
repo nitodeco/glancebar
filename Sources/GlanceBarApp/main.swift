@@ -1,7 +1,6 @@
 import AppKit
 import GlanceBarCore
 
-private let metricsUpdateIntervalInSeconds: TimeInterval = 3
 private let metricsTimerToleranceInSeconds: TimeInterval = 0.5
 
 @MainActor
@@ -9,20 +8,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: StatusMetricsView.preferredSize.width)
     private let metricsReader = SystemMetricsReader()
     private let metricsView = StatusMetricsView(frame: NSRect(origin: .zero, size: StatusMetricsView.preferredSize))
+    private let configurationStore: AppConfigurationStore
+    private var configuration: AppConfiguration
     private var timer: Timer?
 
+    override init() {
+        let configurationStore = AppConfigurationStore()
+        self.configurationStore = configurationStore
+        configuration = configurationStore.load()
+        super.init()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        metricsView.configuration = configuration
         configureStatusButton()
         statusItem.menu = makeMenu()
         updateMetrics()
-        timer = Timer.scheduledTimer(
-            timeInterval: metricsUpdateIntervalInSeconds,
-            target: self,
-            selector: #selector(updateMetrics),
-            userInfo: nil,
-            repeats: true
-        )
-        timer?.tolerance = metricsTimerToleranceInSeconds
+        scheduleTimer()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -31,6 +33,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func updateMetrics() {
         metricsView.snapshot = metricsReader.readSnapshot()
+    }
+
+    private func scheduleTimer() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(
+            timeInterval: configuration.pollingIntervalInSeconds,
+            target: self,
+            selector: #selector(updateMetrics),
+            userInfo: nil,
+            repeats: true
+        )
+        timer?.tolerance = metricsTimerToleranceInSeconds
     }
 
     private func configureStatusButton() {
@@ -45,9 +59,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
+        let settingsItem = NSMenuItem()
+        settingsItem.view = SettingsMenuView(configuration: configuration) { [weak self] configuration in
+            self?.apply(configuration: configuration)
+        }
+        menu.addItem(settingsItem)
+        menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         return menu
+    }
+
+    private func apply(configuration newConfiguration: AppConfiguration) {
+        let previousPollingIntervalInSeconds = configuration.pollingIntervalInSeconds
+        configuration = newConfiguration
+        configurationStore.save(newConfiguration)
+        metricsView.configuration = newConfiguration
+
+        if previousPollingIntervalInSeconds != newConfiguration.pollingIntervalInSeconds {
+            scheduleTimer()
+        }
     }
 }
 

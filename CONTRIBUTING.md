@@ -20,11 +20,11 @@ In scope:
 
 - CPU, RAM, SSD, and network throughput display.
 - Native AppKit menu bar behavior.
+- Compact settings for polling interval, warning threshold, and colors.
 - Small reliability, formatting, packaging, and test improvements.
 
 Out of scope for v1:
 
-- Settings UI or config files.
 - Popovers, charts, histories, and dashboards.
 - Process lists, sensors, GPU polling, or notifications.
 - Electron or web runtimes.

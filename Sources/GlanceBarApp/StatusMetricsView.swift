@@ -9,10 +9,14 @@ private let valueY: CGFloat = 0
 private let labelFontSize: CGFloat = 9
 private let valueFontSize: CGFloat = 12
 private let networkFontSize: CGFloat = 10
-private let warningThresholdPercent = 80
 
 final class StatusMetricsView: NSView {
     static let preferredSize = NSSize(width: 166, height: 24)
+    var configuration = makeDefaultAppConfiguration() {
+        didSet {
+            needsDisplay = true
+        }
+    }
 
     var snapshot = MetricsSnapshot(
         cpuUsagePercent: 0,
@@ -66,17 +70,17 @@ final class StatusMetricsView: NSView {
 
         upload.draw(
             at: NSPoint(x: x, y: labelY),
-            withAttributes: attributes.merging([.foregroundColor: NSColor.systemPurple]) { firstValue, _ in firstValue }
+            withAttributes: attributes.merging([.foregroundColor: configuration.uploadColor]) { firstValue, _ in firstValue }
         )
         download.draw(
             at: NSPoint(x: x, y: valueY),
-            withAttributes: attributes.merging([.foregroundColor: NSColor.systemBlue]) { firstValue, _ in firstValue }
+            withAttributes: attributes.merging([.foregroundColor: configuration.downloadColor]) { firstValue, _ in firstValue }
         )
     }
 
     private func getValueColor(percent: Int) -> NSColor {
-        if percent > warningThresholdPercent {
-            return .systemRed
+        if percent > configuration.warningThresholdPercent {
+            return configuration.warningColor
         }
 
         return .labelColor

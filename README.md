@@ -33,7 +33,7 @@ The bundle is written to:
 open .build/release/GlanceBar.app
 ```
 
-Click the menu bar item to open the menu. The only menu action is Quit.
+Click the menu bar item to open the settings menu.
 
 ## Test
 
@@ -47,6 +47,7 @@ swift test
 - SSD usage updates every 30 seconds.
 - CPU, RAM, and SSD values turn red above 80 percent.
 - Upload is purple, download is blue.
+- Polling interval, warning threshold, warning color, upload color, and download color are configurable.
 
 ## License
 
