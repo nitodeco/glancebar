@@ -10,3 +10,8 @@ import Testing
     #expect(ByteFormatter.formatThroughput(bytesPerSecond: 4_200_000) == "4.2 MB/s")
     #expect(ByteFormatter.formatThroughput(bytesPerSecond: 1_200_000_000) == "1200 MB/s")
 }
+
+@Test func formatsThroughputParts() {
+    #expect(ByteFormatter.formatThroughputParts(bytesPerSecond: 500) == ThroughputFormat(value: "0.5", unit: "KB/s"))
+    #expect(ByteFormatter.formatThroughputParts(bytesPerSecond: 4_200_000) == ThroughputFormat(value: "4.2", unit: "MB/s"))
+}

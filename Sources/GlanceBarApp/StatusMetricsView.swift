@@ -13,6 +13,8 @@ private let valueY: CGFloat = 0
 private let labelFontSize: CGFloat = 9
 private let valueFontSize: CGFloat = 12
 private let networkFontSize: CGFloat = 10
+private let networkValueWidth: CGFloat = 32
+private let networkUnitXOffset: CGFloat = 36
 
 final class StatusMetricsView: NSView {
     static func preferredSize(configuration: AppConfiguration) -> NSSize {
@@ -81,19 +83,51 @@ final class StatusMetricsView: NSView {
     }
 
     private func drawNetwork(x: CGFloat) {
-        let attributes: [NSAttributedString.Key: Any] = [
+        let valueParagraphStyle = NSMutableParagraphStyle()
+        valueParagraphStyle.alignment = .right
+        let valueAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: networkFontSize, weight: .medium),
+            .paragraphStyle: valueParagraphStyle
+        ]
+        let unitAttributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: networkFontSize, weight: .medium)
         ]
-        let upload = ByteFormatter.formatThroughput(bytesPerSecond: snapshot.networkUploadBytesPerSecond)
-        let download = ByteFormatter.formatThroughput(bytesPerSecond: snapshot.networkDownloadBytesPerSecond)
+        let upload = ByteFormatter.formatThroughputParts(bytesPerSecond: snapshot.networkUploadBytesPerSecond)
+        let download = ByteFormatter.formatThroughputParts(bytesPerSecond: snapshot.networkDownloadBytesPerSecond)
 
-        upload.draw(
-            at: NSPoint(x: x, y: labelY),
-            withAttributes: attributes.merging([.foregroundColor: configuration.uploadColor]) { firstValue, _ in firstValue }
+        drawNetworkRow(
+            throughputFormat: upload,
+            x: x,
+            y: labelY,
+            color: configuration.uploadColor,
+            valueAttributes: valueAttributes,
+            unitAttributes: unitAttributes
         )
-        download.draw(
-            at: NSPoint(x: x, y: valueY),
-            withAttributes: attributes.merging([.foregroundColor: configuration.downloadColor]) { firstValue, _ in firstValue }
+        drawNetworkRow(
+            throughputFormat: download,
+            x: x,
+            y: valueY,
+            color: configuration.downloadColor,
+            valueAttributes: valueAttributes,
+            unitAttributes: unitAttributes
+        )
+    }
+
+    private func drawNetworkRow(
+        throughputFormat: ThroughputFormat,
+        x: CGFloat,
+        y: CGFloat,
+        color: NSColor,
+        valueAttributes: [NSAttributedString.Key: Any],
+        unitAttributes: [NSAttributedString.Key: Any]
+    ) {
+        throughputFormat.value.draw(
+            in: NSRect(x: x, y: y, width: networkValueWidth, height: networkFontSize + 2),
+            withAttributes: valueAttributes.merging([.foregroundColor: color]) { firstValue, _ in firstValue }
+        )
+        throughputFormat.unit.draw(
+            at: NSPoint(x: x + networkUnitXOffset, y: y),
+            withAttributes: unitAttributes.merging([.foregroundColor: color]) { firstValue, _ in firstValue }
         )
     }
 
