@@ -84,8 +84,8 @@ final class StatusMetricsView: NSView {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: networkFontSize, weight: .medium)
         ]
-        let upload = "↑ \(ByteFormatter.formatThroughput(bytesPerSecond: snapshot.networkUploadBytesPerSecond))"
-        let download = "↓ \(ByteFormatter.formatThroughput(bytesPerSecond: snapshot.networkDownloadBytesPerSecond))"
+        let upload = ByteFormatter.formatThroughput(bytesPerSecond: snapshot.networkUploadBytesPerSecond)
+        let download = ByteFormatter.formatThroughput(bytesPerSecond: snapshot.networkDownloadBytesPerSecond)
 
         upload.draw(
             at: NSPoint(x: x, y: labelY),

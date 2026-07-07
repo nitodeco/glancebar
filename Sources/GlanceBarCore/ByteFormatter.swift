@@ -1,19 +1,19 @@
 import Foundation
 
+private let bytesPerKilobyte = 1_000.0
+private let bytesPerMegabyte = 1_000_000.0
+
 public enum ByteFormatter {
     public static func formatThroughput(bytesPerSecond: UInt64) -> String {
-        if bytesPerSecond >= 1_000_000_000 {
-            return String(format: "%.1f GB/s", Double(bytesPerSecond) / 1_000_000_000)
+        if Double(bytesPerSecond) >= bytesPerMegabyte {
+            return "\(formatDecimal(value: Double(bytesPerSecond) / bytesPerMegabyte)) MB/s"
         }
 
-        if bytesPerSecond >= 1_000_000 {
-            return String(format: "%.1f MB/s", Double(bytesPerSecond) / 1_000_000)
-        }
-
-        if bytesPerSecond >= 1_000 {
-            return "\(bytesPerSecond / 1_000) KB/s"
-        }
-
-        return "\(bytesPerSecond) B/s"
+        return "\(formatDecimal(value: Double(bytesPerSecond) / bytesPerKilobyte)) KB/s"
     }
+}
+
+private func formatDecimal(value: Double) -> String {
+    String(format: "%.1f", value)
+        .replacingOccurrences(of: ".0", with: "")
 }
