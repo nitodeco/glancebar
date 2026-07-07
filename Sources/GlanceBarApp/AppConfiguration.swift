@@ -17,6 +17,12 @@ let colorPresets = [
     ColorPreset(id: "teal", title: "Teal", color: NSColor(srgbRed: 0.00, green: 0.56, blue: 0.62, alpha: 1)),
     ColorPreset(id: "green", title: "Green", color: NSColor(srgbRed: 0.00, green: 0.58, blue: 0.18, alpha: 1))
 ]
+let textColorPresets = [
+    ColorPreset(id: "white", title: "White", color: .white),
+    ColorPreset(id: "light-gray", title: "Light gray", color: NSColor(srgbRed: 0.78, green: 0.80, blue: 0.84, alpha: 1)),
+    ColorPreset(id: "dark-gray", title: "Dark gray", color: NSColor(srgbRed: 0.12, green: 0.13, blue: 0.15, alpha: 1)),
+    ColorPreset(id: "black", title: "Black", color: .black)
+]
 
 private let pollingIntervalKey = "pollingIntervalInSeconds"
 private let isGpuEnabledKey = "isGpuEnabled"
@@ -28,6 +34,8 @@ private let warningThresholdKey = "warningThresholdPercent"
 private let warningColorKey = "warningColor"
 private let uploadColorKey = "uploadColor"
 private let downloadColorKey = "downloadColor"
+private let baseTextColorKey = "baseTextColor"
+private let labelTextColorKey = "labelTextColor"
 private let isBackgroundEnabledKey = "isBackgroundEnabled"
 private let backgroundHueKey = "backgroundHue"
 private let backgroundSaturationKey = "backgroundSaturation"
@@ -41,6 +49,8 @@ private let defaultWarningThresholdPercent = 80
 private let defaultWarningColorID = "red"
 private let defaultUploadColorID = "purple"
 private let defaultDownloadColorID = "blue"
+private let defaultBaseTextColorID = "white"
+private let defaultLabelTextColorID = "white"
 private let defaultIsBackgroundEnabled = false
 private let defaultBackgroundHue = 0.62
 private let defaultBackgroundSaturation = 0.18
@@ -56,6 +66,8 @@ struct AppConfiguration {
     let warningColorID: String
     let uploadColorID: String
     let downloadColorID: String
+    let baseTextColorID: String
+    let labelTextColorID: String
     let isBackgroundEnabled: Bool
     let backgroundHue: Double
     let backgroundSaturation: Double
@@ -64,6 +76,8 @@ struct AppConfiguration {
     let warningColor: NSColor
     let uploadColor: NSColor
     let downloadColor: NSColor
+    let baseTextColor: NSColor
+    let labelTextColor: NSColor
     let backgroundColor: NSColor
 }
 
@@ -116,6 +130,8 @@ final class AppConfigurationStore {
             warningColorID: readColorID(forKey: warningColorKey, fallback: defaultConfiguration.warningColorID),
             uploadColorID: readColorID(forKey: uploadColorKey, fallback: defaultConfiguration.uploadColorID),
             downloadColorID: readColorID(forKey: downloadColorKey, fallback: defaultConfiguration.downloadColorID),
+            baseTextColorID: readTextColorID(forKey: baseTextColorKey, fallback: defaultConfiguration.baseTextColorID),
+            labelTextColorID: readTextColorID(forKey: labelTextColorKey, fallback: defaultConfiguration.labelTextColorID),
             isBackgroundEnabled: userDefaults.object(forKey: isBackgroundEnabledKey) as? Bool ?? defaultConfiguration.isBackgroundEnabled,
             backgroundHue: readDouble(
                 forKey: backgroundHueKey,
@@ -148,6 +164,8 @@ final class AppConfigurationStore {
         userDefaults.set(configuration.warningColorID, forKey: warningColorKey)
         userDefaults.set(configuration.uploadColorID, forKey: uploadColorKey)
         userDefaults.set(configuration.downloadColorID, forKey: downloadColorKey)
+        userDefaults.set(configuration.baseTextColorID, forKey: baseTextColorKey)
+        userDefaults.set(configuration.labelTextColorID, forKey: labelTextColorKey)
         userDefaults.set(configuration.isBackgroundEnabled, forKey: isBackgroundEnabledKey)
         userDefaults.set(configuration.backgroundHue, forKey: backgroundHueKey)
         userDefaults.set(configuration.backgroundSaturation, forKey: backgroundSaturationKey)
@@ -158,6 +176,12 @@ final class AppConfigurationStore {
         let maybeColorID = userDefaults.string(forKey: key)
 
         return getColorPreset(id: maybeColorID)?.id ?? fallback
+    }
+
+    private func readTextColorID(forKey key: String, fallback: String) -> String {
+        let maybeColorID = userDefaults.string(forKey: key)
+
+        return getTextColorPreset(id: maybeColorID)?.id ?? fallback
     }
 
     private func readDouble(forKey key: String, fallback: Double, minValue: Double, maxValue: Double) -> Double {
@@ -206,6 +230,8 @@ func makeDefaultAppConfiguration() -> AppConfiguration {
         warningColorID: defaultWarningColorID,
         uploadColorID: defaultUploadColorID,
         downloadColorID: defaultDownloadColorID,
+        baseTextColorID: defaultBaseTextColorID,
+        labelTextColorID: defaultLabelTextColorID,
         isBackgroundEnabled: defaultIsBackgroundEnabled,
         backgroundHue: defaultBackgroundHue,
         backgroundSaturation: defaultBackgroundSaturation,
@@ -215,6 +241,12 @@ func makeDefaultAppConfiguration() -> AppConfiguration {
 
 func getColorPreset(id maybeColorID: String?) -> ColorPreset? {
     colorPresets.first { colorPreset in
+        colorPreset.id == maybeColorID
+    }
+}
+
+func getTextColorPreset(id maybeColorID: String?) -> ColorPreset? {
+    textColorPresets.first { colorPreset in
         colorPreset.id == maybeColorID
     }
 }
@@ -230,6 +262,8 @@ extension AppConfiguration {
         warningColorID: String,
         uploadColorID: String,
         downloadColorID: String,
+        baseTextColorID: String,
+        labelTextColorID: String,
         isBackgroundEnabled: Bool,
         backgroundHue: Double,
         backgroundSaturation: Double,
@@ -254,6 +288,8 @@ extension AppConfiguration {
         self.warningColorID = warningColorID
         self.uploadColorID = uploadColorID
         self.downloadColorID = downloadColorID
+        self.baseTextColorID = baseTextColorID
+        self.labelTextColorID = labelTextColorID
         self.isBackgroundEnabled = isBackgroundEnabled
         self.backgroundHue = clamp(value: backgroundHue, fallback: defaultBackgroundHue, minValue: 0, maxValue: 1)
         self.backgroundSaturation = clamp(value: backgroundSaturation, fallback: defaultBackgroundSaturation, minValue: 0, maxValue: 1)
@@ -267,6 +303,8 @@ extension AppConfiguration {
         warningColor = getColorPreset(id: warningColorID)?.color ?? .systemRed
         uploadColor = getColorPreset(id: uploadColorID)?.color ?? .systemPurple
         downloadColor = getColorPreset(id: downloadColorID)?.color ?? .systemBlue
+        baseTextColor = getTextColorPreset(id: baseTextColorID)?.color ?? .white
+        labelTextColor = getTextColorPreset(id: labelTextColorID)?.color ?? .white
         backgroundColor = NSColor(
             calibratedHue: self.backgroundHue,
             saturation: self.backgroundSaturation,

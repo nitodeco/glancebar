@@ -1,7 +1,7 @@
 import AppKit
 
 private let settingsWindowWidth: CGFloat = 280
-private let settingsWindowHeight: CGFloat = 444
+private let settingsWindowHeight: CGFloat = 496
 private let settingsPadding: CGFloat = 16
 private let settingsRowSpacing: CGFloat = 10
 private let settingsValueWidth: CGFloat = 44
@@ -59,6 +59,8 @@ private final class SettingsView: NSView {
     private let warningColorMenu = NSPopUpButton()
     private let uploadColorMenu = NSPopUpButton()
     private let downloadColorMenu = NSPopUpButton()
+    private let baseTextColorMenu = NSPopUpButton()
+    private let labelTextColorMenu = NSPopUpButton()
     private let backgroundEnabledButton = NSButton(checkboxWithTitle: "Background", target: nil, action: nil)
     private let backgroundColorWheel = SimplifiedColorWheelView(frame: NSRect(x: 0, y: 0, width: backgroundWheelSize, height: backgroundWheelSize))
     private let backgroundOpacitySlider = NSSlider()
@@ -102,6 +104,8 @@ private final class SettingsView: NSView {
         stackView.addArrangedSubview(makeColorRow(label: "Over threshold", colorMenu: warningColorMenu))
         stackView.addArrangedSubview(makeColorRow(label: "Upload", colorMenu: uploadColorMenu))
         stackView.addArrangedSubview(makeColorRow(label: "Download", colorMenu: downloadColorMenu))
+        stackView.addArrangedSubview(makeColorRow(label: "Base text", colorMenu: baseTextColorMenu))
+        stackView.addArrangedSubview(makeColorRow(label: "Label text", colorMenu: labelTextColorMenu))
         stackView.addArrangedSubview(backgroundEnabledButton)
         stackView.addArrangedSubview(makeBackgroundColorRow())
         stackView.addArrangedSubview(makeBackgroundOpacityRow())
@@ -116,10 +120,12 @@ private final class SettingsView: NSView {
         yellowThresholdStepper.action = #selector(updateYellowThreshold)
         thresholdStepper.target = self
         thresholdStepper.action = #selector(updateWarningThreshold)
-        configureColorMenu(yellowColorMenu, action: #selector(updateYellowColor))
-        configureColorMenu(warningColorMenu, action: #selector(updateWarningColor))
-        configureColorMenu(uploadColorMenu, action: #selector(updateUploadColor))
-        configureColorMenu(downloadColorMenu, action: #selector(updateDownloadColor))
+        configureColorMenu(yellowColorMenu, presets: colorPresets, action: #selector(updateYellowColor))
+        configureColorMenu(warningColorMenu, presets: colorPresets, action: #selector(updateWarningColor))
+        configureColorMenu(uploadColorMenu, presets: colorPresets, action: #selector(updateUploadColor))
+        configureColorMenu(downloadColorMenu, presets: colorPresets, action: #selector(updateDownloadColor))
+        configureColorMenu(baseTextColorMenu, presets: textColorPresets, action: #selector(updateBaseTextColor))
+        configureColorMenu(labelTextColorMenu, presets: textColorPresets, action: #selector(updateLabelTextColor))
         backgroundEnabledButton.target = self
         backgroundEnabledButton.action = #selector(updateBackgroundEnabled)
         backgroundColorWheel.onChange = { [weak self] hue, saturation in
@@ -207,12 +213,12 @@ private final class SettingsView: NSView {
         return label
     }
 
-    private func configureColorMenu(_ colorMenu: NSPopUpButton, action: Selector) {
+    private func configureColorMenu(_ colorMenu: NSPopUpButton, presets: [ColorPreset], action: Selector) {
         colorMenu.removeAllItems()
         colorMenu.target = self
         colorMenu.action = action
 
-        for colorPreset in colorPresets {
+        for colorPreset in presets {
             let title = "\(colorSwatchGlyph) \(colorPreset.title)"
             colorMenu.addItem(withTitle: title)
             colorMenu.item(withTitle: title)?.representedObject = colorPreset.id
@@ -273,6 +279,8 @@ private final class SettingsView: NSView {
         selectColorPreset(id: configuration.warningColorID, in: warningColorMenu)
         selectColorPreset(id: configuration.uploadColorID, in: uploadColorMenu)
         selectColorPreset(id: configuration.downloadColorID, in: downloadColorMenu)
+        selectTextColorPreset(id: configuration.baseTextColorID, in: baseTextColorMenu)
+        selectTextColorPreset(id: configuration.labelTextColorID, in: labelTextColorMenu)
 
         backgroundEnabledButton.state = configuration.isBackgroundEnabled ? .on : .off
         backgroundColorWheel.hue = configuration.backgroundHue
@@ -296,12 +304,28 @@ private final class SettingsView: NSView {
         colorMenu.selectItem(withTitle: "\(colorSwatchGlyph) \(colorPreset.title)")
     }
 
+    private func selectTextColorPreset(id colorID: String, in colorMenu: NSPopUpButton) {
+        guard let colorPreset = getTextColorPreset(id: colorID) else {
+            return
+        }
+
+        colorMenu.selectItem(withTitle: "\(colorSwatchGlyph) \(colorPreset.title)")
+    }
+
     private func selectedColorID(in colorMenu: NSPopUpButton, fallback: String) -> String {
         guard let maybeColorID = colorMenu.selectedItem?.representedObject as? String else {
             return fallback
         }
 
         return getColorPreset(id: maybeColorID)?.id ?? fallback
+    }
+
+    private func selectedTextColorID(in colorMenu: NSPopUpButton, fallback: String) -> String {
+        guard let maybeColorID = colorMenu.selectedItem?.representedObject as? String else {
+            return fallback
+        }
+
+        return getTextColorPreset(id: maybeColorID)?.id ?? fallback
     }
 
     private func makeConfiguration(
@@ -314,6 +338,8 @@ private final class SettingsView: NSView {
         warningColorID: String? = nil,
         uploadColorID: String? = nil,
         downloadColorID: String? = nil,
+        baseTextColorID: String? = nil,
+        labelTextColorID: String? = nil,
         isBackgroundEnabled: Bool? = nil,
         backgroundHue: Double? = nil,
         backgroundSaturation: Double? = nil,
@@ -329,6 +355,8 @@ private final class SettingsView: NSView {
             warningColorID: warningColorID ?? configuration.warningColorID,
             uploadColorID: uploadColorID ?? configuration.uploadColorID,
             downloadColorID: downloadColorID ?? configuration.downloadColorID,
+            baseTextColorID: baseTextColorID ?? configuration.baseTextColorID,
+            labelTextColorID: labelTextColorID ?? configuration.labelTextColorID,
             isBackgroundEnabled: isBackgroundEnabled ?? configuration.isBackgroundEnabled,
             backgroundHue: backgroundHue ?? configuration.backgroundHue,
             backgroundSaturation: backgroundSaturation ?? configuration.backgroundSaturation,
@@ -383,6 +411,16 @@ private final class SettingsView: NSView {
 
     @objc private func updateDownloadColor() {
         configuration = makeConfiguration(downloadColorID: selectedColorID(in: downloadColorMenu, fallback: configuration.downloadColorID))
+        onChange(configuration)
+    }
+
+    @objc private func updateBaseTextColor() {
+        configuration = makeConfiguration(baseTextColorID: selectedTextColorID(in: baseTextColorMenu, fallback: configuration.baseTextColorID))
+        onChange(configuration)
+    }
+
+    @objc private func updateLabelTextColor() {
+        configuration = makeConfiguration(labelTextColorID: selectedTextColorID(in: labelTextColorMenu, fallback: configuration.labelTextColorID))
         onChange(configuration)
     }
 
