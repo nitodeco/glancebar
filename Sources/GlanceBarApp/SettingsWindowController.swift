@@ -5,7 +5,8 @@ private let settingsWindowHeight: CGFloat = 232
 private let settingsPadding: CGFloat = 16
 private let settingsRowSpacing: CGFloat = 10
 private let settingsValueWidth: CGFloat = 44
-private let colorPresetMenuWidth: CGFloat = 96
+private let colorPresetMenuWidth: CGFloat = 116
+private let colorSwatchGlyph = "■"
 
 @MainActor
 final class SettingsWindowController: NSWindowController {
@@ -135,9 +136,32 @@ private final class SettingsView: NSView {
         colorMenu.action = action
 
         for colorPreset in colorPresets {
-            colorMenu.addItem(withTitle: colorPreset.title)
-            colorMenu.item(withTitle: colorPreset.title)?.representedObject = colorPreset.id
+            let title = "\(colorSwatchGlyph) \(colorPreset.title)"
+            colorMenu.addItem(withTitle: title)
+            colorMenu.item(withTitle: title)?.representedObject = colorPreset.id
+            colorMenu.item(withTitle: title)?.attributedTitle = makeColorPresetTitle(colorPreset: colorPreset)
         }
+    }
+
+    private func makeColorPresetTitle(colorPreset: ColorPreset) -> NSAttributedString {
+        let title = NSMutableAttributedString(
+            string: "\(colorSwatchGlyph) ",
+            attributes: [
+                .foregroundColor: colorPreset.color,
+                .font: NSFont.systemFont(ofSize: 12, weight: .semibold)
+            ]
+        )
+        title.append(
+            NSAttributedString(
+                string: colorPreset.title,
+                attributes: [
+                    .foregroundColor: NSColor.labelColor,
+                    .font: NSFont.systemFont(ofSize: 12)
+                ]
+            )
+        )
+
+        return title
     }
 
     private func syncControls() {
@@ -163,7 +187,7 @@ private final class SettingsView: NSView {
             return
         }
 
-        colorMenu.selectItem(withTitle: colorPreset.title)
+        colorMenu.selectItem(withTitle: "\(colorSwatchGlyph) \(colorPreset.title)")
     }
 
     private func selectedColorID(in colorMenu: NSPopUpButton, fallback: String) -> String {
