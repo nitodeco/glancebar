@@ -8,9 +8,6 @@ private let settingsSectionPadding: CGFloat = 14
 private let settingsLabelWidth: CGFloat = 128
 private let settingsValueWidth: CGFloat = 44
 private let colorPresetMenuWidth: CGFloat = 150
-private let backgroundWheelSize: CGFloat = 72
-private let backgroundOpacitySliderWidth: CGFloat = 150
-private let backgroundPreviewSize: CGFloat = 28
 private let colorSwatchGlyph = "■"
 
 @MainActor
@@ -63,12 +60,6 @@ private final class SettingsView: NSView {
     private let downloadColorMenu = NSPopUpButton()
     private let baseTextColorMenu = NSPopUpButton()
     private let labelTextColorMenu = NSPopUpButton()
-    private let backgroundEnabledButton = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
-    private let backgroundColorWheel = SimplifiedColorWheelView(frame: NSRect(x: 0, y: 0, width: backgroundWheelSize, height: backgroundWheelSize))
-    private let backgroundOpacitySlider = NSSlider()
-    private let backgroundOpacityValueLabel = NSTextField(labelWithString: "")
-    private let backgroundPreviewView = NSView()
-
     init(configuration: AppConfiguration, onChange: @escaping (AppConfiguration) -> Void) {
         self.configuration = configuration
         self.onChange = onChange
@@ -109,12 +100,6 @@ private final class SettingsView: NSView {
             makeColorRow(label: "Base text", colorMenu: baseTextColorMenu),
             makeColorRow(label: "Label text", colorMenu: labelTextColorMenu)
         ]))
-        tabView.addTabViewItem(makeTabViewItem(label: "Background", arrangedSubviews: [
-            makeCheckboxRow(label: "Background", checkbox: backgroundEnabledButton),
-            makeBackgroundColorRow(),
-            makeBackgroundOpacityRow()
-        ]))
-
         configureControls()
     }
 
@@ -162,13 +147,6 @@ private final class SettingsView: NSView {
         configureColorMenu(downloadColorMenu, presets: colorPresets, action: #selector(updateDownloadColor))
         configureColorMenu(baseTextColorMenu, presets: textColorPresets, action: #selector(updateBaseTextColor))
         configureColorMenu(labelTextColorMenu, presets: textColorPresets, action: #selector(updateLabelTextColor))
-        backgroundEnabledButton.target = self
-        backgroundEnabledButton.action = #selector(updateBackgroundEnabled)
-        backgroundColorWheel.onChange = { [weak self] hue, saturation in
-            self?.updateBackgroundColor(hue: hue, saturation: saturation)
-        }
-        backgroundOpacitySlider.target = self
-        backgroundOpacitySlider.action = #selector(updateBackgroundOpacity)
     }
 
     private func makeNumberRow(label: String, valueLabel: NSTextField, stepper: NSStepper) -> NSStackView {
@@ -204,40 +182,6 @@ private final class SettingsView: NSView {
 
         row.addArrangedSubview(titleLabel)
         row.addArrangedSubview(colorMenu)
-
-        return row
-    }
-
-    private func makeBackgroundColorRow() -> NSStackView {
-        let row = makeRowStackView()
-        let titleLabel = makeTitleLabel(text: "Background")
-        backgroundColorWheel.widthAnchor.constraint(equalToConstant: backgroundWheelSize).isActive = true
-        backgroundColorWheel.heightAnchor.constraint(equalToConstant: backgroundWheelSize).isActive = true
-        backgroundPreviewView.wantsLayer = true
-        backgroundPreviewView.widthAnchor.constraint(equalToConstant: backgroundPreviewSize).isActive = true
-        backgroundPreviewView.heightAnchor.constraint(equalToConstant: backgroundPreviewSize).isActive = true
-        backgroundPreviewView.layer?.cornerRadius = 6
-        backgroundPreviewView.layer?.borderWidth = 1
-        backgroundPreviewView.layer?.borderColor = NSColor.separatorColor.cgColor
-
-        row.addArrangedSubview(titleLabel)
-        row.addArrangedSubview(backgroundColorWheel)
-        row.addArrangedSubview(backgroundPreviewView)
-
-        return row
-    }
-
-    private func makeBackgroundOpacityRow() -> NSStackView {
-        let row = makeRowStackView()
-        let titleLabel = makeTitleLabel(text: "Opacity")
-        backgroundOpacityValueLabel.alignment = .right
-        backgroundOpacityValueLabel.widthAnchor.constraint(equalToConstant: settingsValueWidth).isActive = true
-        backgroundOpacitySlider.controlSize = .small
-        backgroundOpacitySlider.widthAnchor.constraint(equalToConstant: backgroundOpacitySliderWidth).isActive = true
-
-        row.addArrangedSubview(titleLabel)
-        row.addArrangedSubview(backgroundOpacityValueLabel)
-        row.addArrangedSubview(backgroundOpacitySlider)
 
         return row
     }
@@ -330,18 +274,6 @@ private final class SettingsView: NSView {
         selectTextColorPreset(id: configuration.baseTextColorID, in: baseTextColorMenu)
         selectTextColorPreset(id: configuration.labelTextColorID, in: labelTextColorMenu)
 
-        backgroundEnabledButton.state = configuration.isBackgroundEnabled ? .on : .off
-        backgroundColorWheel.hue = configuration.backgroundHue
-        backgroundColorWheel.saturation = configuration.backgroundSaturation
-        backgroundColorWheel.isEnabled = configuration.isBackgroundEnabled
-        backgroundOpacitySlider.minValue = Double(minimumBackgroundOpacityPercent)
-        backgroundOpacitySlider.maxValue = Double(maximumBackgroundOpacityPercent)
-        backgroundOpacitySlider.doubleValue = Double(configuration.backgroundOpacityPercent)
-        backgroundOpacitySlider.isEnabled = configuration.isBackgroundEnabled
-        backgroundOpacityValueLabel.stringValue = "\(configuration.backgroundOpacityPercent)%"
-        backgroundOpacityValueLabel.textColor = configuration.isBackgroundEnabled ? .labelColor : .disabledControlTextColor
-        backgroundPreviewView.layer?.backgroundColor = configuration.backgroundColor.cgColor
-        backgroundPreviewView.alphaValue = configuration.isBackgroundEnabled ? 1 : 0.35
     }
 
     private func selectColorPreset(id colorID: String, in colorMenu: NSPopUpButton) {
@@ -387,11 +319,7 @@ private final class SettingsView: NSView {
         uploadColorID: String? = nil,
         downloadColorID: String? = nil,
         baseTextColorID: String? = nil,
-        labelTextColorID: String? = nil,
-        isBackgroundEnabled: Bool? = nil,
-        backgroundHue: Double? = nil,
-        backgroundSaturation: Double? = nil,
-        backgroundOpacityPercent: Int? = nil
+        labelTextColorID: String? = nil
     ) -> AppConfiguration {
         AppConfiguration(
             pollingIntervalInSeconds: pollingIntervalInSeconds ?? configuration.pollingIntervalInSeconds,
@@ -404,11 +332,7 @@ private final class SettingsView: NSView {
             uploadColorID: uploadColorID ?? configuration.uploadColorID,
             downloadColorID: downloadColorID ?? configuration.downloadColorID,
             baseTextColorID: baseTextColorID ?? configuration.baseTextColorID,
-            labelTextColorID: labelTextColorID ?? configuration.labelTextColorID,
-            isBackgroundEnabled: isBackgroundEnabled ?? configuration.isBackgroundEnabled,
-            backgroundHue: backgroundHue ?? configuration.backgroundHue,
-            backgroundSaturation: backgroundSaturation ?? configuration.backgroundSaturation,
-            backgroundOpacityPercent: backgroundOpacityPercent ?? configuration.backgroundOpacityPercent
+            labelTextColorID: labelTextColorID ?? configuration.labelTextColorID
         )
     }
 
@@ -472,127 +396,4 @@ private final class SettingsView: NSView {
         onChange(configuration)
     }
 
-    @objc private func updateBackgroundEnabled() {
-        configuration = makeConfiguration(isBackgroundEnabled: backgroundEnabledButton.state == .on)
-        syncControls()
-        onChange(configuration)
-    }
-
-    private func updateBackgroundColor(hue: Double, saturation: Double) {
-        configuration = makeConfiguration(backgroundHue: hue, backgroundSaturation: saturation)
-        syncControls()
-        onChange(configuration)
-    }
-
-    @objc private func updateBackgroundOpacity() {
-        configuration = makeConfiguration(backgroundOpacityPercent: backgroundOpacitySlider.integerValue)
-        syncControls()
-        onChange(configuration)
-    }
-}
-
-@MainActor
-private final class SimplifiedColorWheelView: NSView {
-    var hue = 0.62 {
-        didSet {
-            needsDisplay = true
-        }
-    }
-
-    var saturation = 0.18 {
-        didSet {
-            needsDisplay = true
-        }
-    }
-
-    var isEnabled = true {
-        didSet {
-            needsDisplay = true
-        }
-    }
-
-    var onChange: ((Double, Double) -> Void)?
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-
-        let wheelRect = bounds.insetBy(dx: 2, dy: 2)
-        let radius = min(wheelRect.width, wheelRect.height) / 2
-        let centerPoint = NSPoint(x: wheelRect.midX, y: wheelRect.midY)
-        let cellSize: CGFloat = 2
-
-        for cellX in stride(from: wheelRect.minX, to: wheelRect.maxX, by: cellSize) {
-            for cellY in stride(from: wheelRect.minY, to: wheelRect.maxY, by: cellSize) {
-                let deltaX = cellX + cellSize / 2 - centerPoint.x
-                let deltaY = cellY + cellSize / 2 - centerPoint.y
-                let distance = sqrt(deltaX * deltaX + deltaY * deltaY)
-
-                guard distance <= radius else {
-                    continue
-                }
-
-                NSColor(
-                    calibratedHue: getHue(deltaX: deltaX, deltaY: deltaY),
-                    saturation: distance / radius,
-                    brightness: 0.9,
-                    alpha: isEnabled ? 1 : 0.35
-                ).setFill()
-                NSRect(x: cellX, y: cellY, width: cellSize, height: cellSize).fill()
-            }
-        }
-
-        NSColor.separatorColor.setStroke()
-        NSBezierPath(ovalIn: wheelRect).stroke()
-        drawHandle(centerPoint: centerPoint, radius: radius)
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        updateSelection(event: event)
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        updateSelection(event: event)
-    }
-
-    private func drawHandle(centerPoint: NSPoint, radius: CGFloat) {
-        let angle = CGFloat(hue) * CGFloat.pi * 2
-        let handleRadius = CGFloat(saturation) * radius
-        let handleCenter = NSPoint(
-            x: centerPoint.x + cos(angle) * handleRadius,
-            y: centerPoint.y + sin(angle) * handleRadius
-        )
-        let handleRect = NSRect(x: handleCenter.x - 4, y: handleCenter.y - 4, width: 8, height: 8)
-        NSColor.white.setFill()
-        NSBezierPath(ovalIn: handleRect).fill()
-        NSColor.black.withAlphaComponent(0.75).setStroke()
-        NSBezierPath(ovalIn: handleRect).stroke()
-    }
-
-    private func updateSelection(event: NSEvent) {
-        guard isEnabled else {
-            return
-        }
-
-        let wheelRect = bounds.insetBy(dx: 2, dy: 2)
-        let radius = min(wheelRect.width, wheelRect.height) / 2
-        let centerPoint = NSPoint(x: wheelRect.midX, y: wheelRect.midY)
-        let eventPoint = convert(event.locationInWindow, from: nil)
-        let deltaX = eventPoint.x - centerPoint.x
-        let deltaY = eventPoint.y - centerPoint.y
-        let distance = min(sqrt(deltaX * deltaX + deltaY * deltaY), radius)
-
-        hue = Double(getHue(deltaX: deltaX, deltaY: deltaY))
-        saturation = Double(distance / radius)
-        onChange?(hue, saturation)
-    }
-
-    private func getHue(deltaX: CGFloat, deltaY: CGFloat) -> CGFloat {
-        let angle = atan2(deltaY, deltaX)
-
-        if angle >= 0 {
-            return angle / (CGFloat.pi * 2)
-        }
-
-        return (angle + CGFloat.pi * 2) / (CGFloat.pi * 2)
-    }
 }

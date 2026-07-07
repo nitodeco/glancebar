@@ -6,8 +6,6 @@ let minimumGpuPollingMultiplier = 1
 let maximumGpuPollingMultiplier = 20
 let minimumWarningThresholdPercent = 1
 let maximumWarningThresholdPercent = 100
-let minimumBackgroundOpacityPercent = 10
-let maximumBackgroundOpacityPercent = 100
 let colorPresets = [
     ColorPreset(id: "red", title: "Red", color: NSColor(srgbRed: 0.86, green: 0.04, blue: 0.08, alpha: 1)),
     ColorPreset(id: "orange", title: "Orange", color: NSColor(srgbRed: 0.88, green: 0.28, blue: 0.00, alpha: 1)),
@@ -36,10 +34,6 @@ private let uploadColorKey = "uploadColor"
 private let downloadColorKey = "downloadColor"
 private let baseTextColorKey = "baseTextColor"
 private let labelTextColorKey = "labelTextColor"
-private let isBackgroundEnabledKey = "isBackgroundEnabled"
-private let backgroundHueKey = "backgroundHue"
-private let backgroundSaturationKey = "backgroundSaturation"
-private let backgroundOpacityPercentKey = "backgroundOpacityPercent"
 private let defaultPollingIntervalInSeconds: TimeInterval = 3
 private let defaultIsGpuEnabled = false
 private let defaultGpuPollingMultiplier = 2
@@ -51,10 +45,6 @@ private let defaultUploadColorID = "purple"
 private let defaultDownloadColorID = "blue"
 private let defaultBaseTextColorID = "white"
 private let defaultLabelTextColorID = "white"
-private let defaultIsBackgroundEnabled = false
-private let defaultBackgroundHue = 0.62
-private let defaultBackgroundSaturation = 0.18
-private let defaultBackgroundOpacityPercent = 82
 
 struct AppConfiguration {
     let pollingIntervalInSeconds: TimeInterval
@@ -68,17 +58,12 @@ struct AppConfiguration {
     let downloadColorID: String
     let baseTextColorID: String
     let labelTextColorID: String
-    let isBackgroundEnabled: Bool
-    let backgroundHue: Double
-    let backgroundSaturation: Double
-    let backgroundOpacityPercent: Int
     let yellowColor: NSColor
     let warningColor: NSColor
     let uploadColor: NSColor
     let downloadColor: NSColor
     let baseTextColor: NSColor
     let labelTextColor: NSColor
-    let backgroundColor: NSColor
 }
 
 struct ColorPreset {
@@ -131,26 +116,7 @@ final class AppConfigurationStore {
             uploadColorID: readColorID(forKey: uploadColorKey, fallback: defaultConfiguration.uploadColorID),
             downloadColorID: readColorID(forKey: downloadColorKey, fallback: defaultConfiguration.downloadColorID),
             baseTextColorID: readTextColorID(forKey: baseTextColorKey, fallback: defaultConfiguration.baseTextColorID),
-            labelTextColorID: readTextColorID(forKey: labelTextColorKey, fallback: defaultConfiguration.labelTextColorID),
-            isBackgroundEnabled: userDefaults.object(forKey: isBackgroundEnabledKey) as? Bool ?? defaultConfiguration.isBackgroundEnabled,
-            backgroundHue: readDouble(
-                forKey: backgroundHueKey,
-                fallback: defaultConfiguration.backgroundHue,
-                minValue: 0,
-                maxValue: 1
-            ),
-            backgroundSaturation: readDouble(
-                forKey: backgroundSaturationKey,
-                fallback: defaultConfiguration.backgroundSaturation,
-                minValue: 0,
-                maxValue: 1
-            ),
-            backgroundOpacityPercent: clamp(
-                value: userDefaults.integer(forKey: backgroundOpacityPercentKey),
-                fallback: defaultConfiguration.backgroundOpacityPercent,
-                minValue: minimumBackgroundOpacityPercent,
-                maxValue: maximumBackgroundOpacityPercent
-            )
+            labelTextColorID: readTextColorID(forKey: labelTextColorKey, fallback: defaultConfiguration.labelTextColorID)
         )
     }
 
@@ -166,10 +132,6 @@ final class AppConfigurationStore {
         userDefaults.set(configuration.downloadColorID, forKey: downloadColorKey)
         userDefaults.set(configuration.baseTextColorID, forKey: baseTextColorKey)
         userDefaults.set(configuration.labelTextColorID, forKey: labelTextColorKey)
-        userDefaults.set(configuration.isBackgroundEnabled, forKey: isBackgroundEnabledKey)
-        userDefaults.set(configuration.backgroundHue, forKey: backgroundHueKey)
-        userDefaults.set(configuration.backgroundSaturation, forKey: backgroundSaturationKey)
-        userDefaults.set(configuration.backgroundOpacityPercent, forKey: backgroundOpacityPercentKey)
     }
 
     private func readColorID(forKey key: String, fallback: String) -> String {
@@ -182,14 +144,6 @@ final class AppConfigurationStore {
         let maybeColorID = userDefaults.string(forKey: key)
 
         return getTextColorPreset(id: maybeColorID)?.id ?? fallback
-    }
-
-    private func readDouble(forKey key: String, fallback: Double, minValue: Double, maxValue: Double) -> Double {
-        guard userDefaults.object(forKey: key) != nil else {
-            return fallback
-        }
-
-        return clamp(value: userDefaults.double(forKey: key), fallback: fallback, minValue: minValue, maxValue: maxValue)
     }
 
     private func readGpuPollingMultiplier(pollingIntervalInSeconds: TimeInterval, fallback: Int) -> Int {
@@ -231,11 +185,7 @@ func makeDefaultAppConfiguration() -> AppConfiguration {
         uploadColorID: defaultUploadColorID,
         downloadColorID: defaultDownloadColorID,
         baseTextColorID: defaultBaseTextColorID,
-        labelTextColorID: defaultLabelTextColorID,
-        isBackgroundEnabled: defaultIsBackgroundEnabled,
-        backgroundHue: defaultBackgroundHue,
-        backgroundSaturation: defaultBackgroundSaturation,
-        backgroundOpacityPercent: defaultBackgroundOpacityPercent
+        labelTextColorID: defaultLabelTextColorID
     )
 }
 
@@ -263,11 +213,7 @@ extension AppConfiguration {
         uploadColorID: String,
         downloadColorID: String,
         baseTextColorID: String,
-        labelTextColorID: String,
-        isBackgroundEnabled: Bool,
-        backgroundHue: Double,
-        backgroundSaturation: Double,
-        backgroundOpacityPercent: Int
+        labelTextColorID: String
     ) {
         self.pollingIntervalInSeconds = pollingIntervalInSeconds
         self.isGpuEnabled = isGpuEnabled
@@ -290,27 +236,12 @@ extension AppConfiguration {
         self.downloadColorID = downloadColorID
         self.baseTextColorID = baseTextColorID
         self.labelTextColorID = labelTextColorID
-        self.isBackgroundEnabled = isBackgroundEnabled
-        self.backgroundHue = clamp(value: backgroundHue, fallback: defaultBackgroundHue, minValue: 0, maxValue: 1)
-        self.backgroundSaturation = clamp(value: backgroundSaturation, fallback: defaultBackgroundSaturation, minValue: 0, maxValue: 1)
-        self.backgroundOpacityPercent = clamp(
-            value: backgroundOpacityPercent,
-            fallback: defaultBackgroundOpacityPercent,
-            minValue: minimumBackgroundOpacityPercent,
-            maxValue: maximumBackgroundOpacityPercent
-        )
         yellowColor = getColorPreset(id: yellowColorID)?.color ?? NSColor(srgbRed: 0.72, green: 0.54, blue: 0.00, alpha: 1)
         warningColor = getColorPreset(id: warningColorID)?.color ?? .systemRed
         uploadColor = getColorPreset(id: uploadColorID)?.color ?? .systemPurple
         downloadColor = getColorPreset(id: downloadColorID)?.color ?? .systemBlue
         baseTextColor = getTextColorPreset(id: baseTextColorID)?.color ?? .white
         labelTextColor = getTextColorPreset(id: labelTextColorID)?.color ?? .white
-        backgroundColor = NSColor(
-            calibratedHue: self.backgroundHue,
-            saturation: self.backgroundSaturation,
-            brightness: 0.18,
-            alpha: CGFloat(self.backgroundOpacityPercent) / 100
-        )
     }
 }
 

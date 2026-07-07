@@ -15,13 +15,10 @@ private let valueFontSize: CGFloat = 11
 private let networkFontSize: CGFloat = 9
 private let networkValueWidth: CGFloat = 32
 private let networkUnitXOffset: CGFloat = 36
-private let contentHorizontalPadding: CGFloat = 12
-private let backgroundHorizontalInset: CGFloat = 1
-private let backgroundVerticalInset: CGFloat = 2
 
 final class StatusMetricsView: NSView {
     static func preferredSize(configuration: AppConfiguration) -> NSSize {
-        NSSize(width: (configuration.isGpuEnabled ? 196 : 160) + contentHorizontalPadding * 2, height: 24)
+        NSSize(width: configuration.isGpuEnabled ? 196 : 160, height: 24)
     }
 
     var configuration = makeDefaultAppConfiguration() {
@@ -54,11 +51,6 @@ final class StatusMetricsView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
-        drawBackground()
-        NSGraphicsContext.saveGraphicsState()
-        let contentTransform = NSAffineTransform()
-        contentTransform.translateX(by: contentHorizontalPadding, yBy: 0)
-        contentTransform.concat()
         drawColumn(label: "CPU", value: "\(snapshot.cpuUsagePercent)%", percent: snapshot.cpuUsagePercent, x: 0)
 
         if configuration.isGpuEnabled {
@@ -67,7 +59,6 @@ final class StatusMetricsView: NSView {
             drawColumn(label: "RAM", value: "\(snapshot.ramUsagePercent)%", percent: snapshot.ramUsagePercent, x: enabledRamColumnX)
             drawColumn(label: "SSD", value: "\(snapshot.ssdUsagePercent)%", percent: snapshot.ssdUsagePercent, x: enabledSsdColumnX)
             drawNetwork(x: enabledNetworkColumnX)
-            NSGraphicsContext.restoreGraphicsState()
 
             return
         }
@@ -75,20 +66,6 @@ final class StatusMetricsView: NSView {
         drawColumn(label: "RAM", value: "\(snapshot.ramUsagePercent)%", percent: snapshot.ramUsagePercent, x: ramColumnX)
         drawColumn(label: "SSD", value: "\(snapshot.ssdUsagePercent)%", percent: snapshot.ssdUsagePercent, x: ssdColumnX)
         drawNetwork(x: networkColumnX)
-        NSGraphicsContext.restoreGraphicsState()
-    }
-
-    private func drawBackground() {
-        guard configuration.isBackgroundEnabled else {
-            return
-        }
-
-        configuration.backgroundColor.setFill()
-        NSBezierPath(
-            roundedRect: bounds.insetBy(dx: backgroundHorizontalInset, dy: backgroundVerticalInset),
-            xRadius: 5,
-            yRadius: 5
-        ).fill()
     }
 
     private func drawColumn(label: String, value: String, percent: Int, x: CGFloat) {
