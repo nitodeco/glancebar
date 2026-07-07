@@ -1,13 +1,15 @@
 import AppKit
 
-private let settingsWindowWidth: CGFloat = 280
-private let settingsWindowHeight: CGFloat = 496
+private let settingsWindowWidth: CGFloat = 360
+private let settingsWindowHeight: CGFloat = 340
 private let settingsPadding: CGFloat = 16
 private let settingsRowSpacing: CGFloat = 10
+private let settingsSectionPadding: CGFloat = 14
+private let settingsLabelWidth: CGFloat = 128
 private let settingsValueWidth: CGFloat = 44
-private let colorPresetMenuWidth: CGFloat = 116
+private let colorPresetMenuWidth: CGFloat = 150
 private let backgroundWheelSize: CGFloat = 72
-private let backgroundOpacitySliderWidth: CGFloat = 108
+private let backgroundOpacitySliderWidth: CGFloat = 150
 private let backgroundPreviewSize: CGFloat = 28
 private let colorSwatchGlyph = "■"
 
@@ -50,7 +52,7 @@ private final class SettingsView: NSView {
     private let gpuMultiplierValueLabel = NSTextField(labelWithString: "")
     private let yellowThresholdValueLabel = NSTextField(labelWithString: "")
     private let thresholdValueLabel = NSTextField(labelWithString: "")
-    private let gpuEnabledButton = NSButton(checkboxWithTitle: "Show GPU", target: nil, action: nil)
+    private let gpuEnabledButton = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let pollingStepper = NSStepper()
     private let gpuMultiplierStepper = NSStepper()
     private let yellowThresholdStepper = NSStepper()
@@ -61,7 +63,7 @@ private final class SettingsView: NSView {
     private let downloadColorMenu = NSPopUpButton()
     private let baseTextColorMenu = NSPopUpButton()
     private let labelTextColorMenu = NSPopUpButton()
-    private let backgroundEnabledButton = NSButton(checkboxWithTitle: "Background", target: nil, action: nil)
+    private let backgroundEnabledButton = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let backgroundColorWheel = SimplifiedColorWheelView(frame: NSRect(x: 0, y: 0, width: backgroundWheelSize, height: backgroundWheelSize))
     private let backgroundOpacitySlider = NSSlider()
     private let backgroundOpacityValueLabel = NSTextField(labelWithString: "")
@@ -81,35 +83,69 @@ private final class SettingsView: NSView {
     }
 
     private func buildView() {
+        let tabView = NSTabView()
+        tabView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(tabView)
+
+        NSLayoutConstraint.activate([
+            tabView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: settingsPadding),
+            tabView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -settingsPadding),
+            tabView.topAnchor.constraint(equalTo: topAnchor, constant: settingsPadding),
+            tabView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -settingsPadding)
+        ])
+
+        tabView.addTabViewItem(makeTabViewItem(label: "Metrics", arrangedSubviews: [
+            makeNumberRow(label: "Polling", valueLabel: pollingValueLabel, stepper: pollingStepper),
+            makeCheckboxRow(label: "GPU", checkbox: gpuEnabledButton),
+            makeNumberRow(label: "GPU every", valueLabel: gpuMultiplierValueLabel, stepper: gpuMultiplierStepper),
+            makeNumberRow(label: "Yellow above", valueLabel: yellowThresholdValueLabel, stepper: yellowThresholdStepper),
+            makeNumberRow(label: "Red above", valueLabel: thresholdValueLabel, stepper: thresholdStepper)
+        ]))
+        tabView.addTabViewItem(makeTabViewItem(label: "Colors", arrangedSubviews: [
+            makeColorRow(label: "Yellow", colorMenu: yellowColorMenu),
+            makeColorRow(label: "Over threshold", colorMenu: warningColorMenu),
+            makeColorRow(label: "Upload", colorMenu: uploadColorMenu),
+            makeColorRow(label: "Download", colorMenu: downloadColorMenu),
+            makeColorRow(label: "Base text", colorMenu: baseTextColorMenu),
+            makeColorRow(label: "Label text", colorMenu: labelTextColorMenu)
+        ]))
+        tabView.addTabViewItem(makeTabViewItem(label: "Background", arrangedSubviews: [
+            makeCheckboxRow(label: "Background", checkbox: backgroundEnabledButton),
+            makeBackgroundColorRow(),
+            makeBackgroundOpacityRow()
+        ]))
+
+        configureControls()
+    }
+
+    private func makeTabViewItem(label: String, arrangedSubviews: [NSView]) -> NSTabViewItem {
+        let tabViewItem = NSTabViewItem(identifier: label)
+        let contentView = NSView()
         let stackView = NSStackView()
         stackView.orientation = .vertical
         stackView.alignment = .leading
         stackView.spacing = settingsRowSpacing
         stackView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stackView)
+        contentView.addSubview(stackView)
+
+        for arrangedSubview in arrangedSubviews {
+            stackView.addArrangedSubview(arrangedSubview)
+        }
 
         NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: settingsPadding),
-            stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -settingsPadding),
-            stackView.topAnchor.constraint(equalTo: topAnchor, constant: settingsPadding),
-            stackView.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -settingsPadding)
+            stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: settingsSectionPadding),
+            stackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -settingsSectionPadding),
+            stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: settingsSectionPadding),
+            stackView.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -settingsSectionPadding)
         ])
 
-        stackView.addArrangedSubview(makeNumberRow(label: "Polling", valueLabel: pollingValueLabel, stepper: pollingStepper))
-        stackView.addArrangedSubview(gpuEnabledButton)
-        stackView.addArrangedSubview(makeNumberRow(label: "GPU every", valueLabel: gpuMultiplierValueLabel, stepper: gpuMultiplierStepper))
-        stackView.addArrangedSubview(makeNumberRow(label: "Yellow above", valueLabel: yellowThresholdValueLabel, stepper: yellowThresholdStepper))
-        stackView.addArrangedSubview(makeNumberRow(label: "Red above", valueLabel: thresholdValueLabel, stepper: thresholdStepper))
-        stackView.addArrangedSubview(makeColorRow(label: "Yellow", colorMenu: yellowColorMenu))
-        stackView.addArrangedSubview(makeColorRow(label: "Over threshold", colorMenu: warningColorMenu))
-        stackView.addArrangedSubview(makeColorRow(label: "Upload", colorMenu: uploadColorMenu))
-        stackView.addArrangedSubview(makeColorRow(label: "Download", colorMenu: downloadColorMenu))
-        stackView.addArrangedSubview(makeColorRow(label: "Base text", colorMenu: baseTextColorMenu))
-        stackView.addArrangedSubview(makeColorRow(label: "Label text", colorMenu: labelTextColorMenu))
-        stackView.addArrangedSubview(backgroundEnabledButton)
-        stackView.addArrangedSubview(makeBackgroundColorRow())
-        stackView.addArrangedSubview(makeBackgroundOpacityRow())
+        tabViewItem.label = label
+        tabViewItem.view = contentView
 
+        return tabViewItem
+    }
+
+    private func configureControls() {
         pollingStepper.target = self
         pollingStepper.action = #selector(updatePollingInterval)
         gpuEnabledButton.target = self
@@ -145,6 +181,17 @@ private final class SettingsView: NSView {
         row.addArrangedSubview(titleLabel)
         row.addArrangedSubview(valueLabel)
         row.addArrangedSubview(stepper)
+
+        return row
+    }
+
+    private func makeCheckboxRow(label: String, checkbox: NSButton) -> NSStackView {
+        let row = makeRowStackView()
+        let titleLabel = makeTitleLabel(text: label)
+        checkbox.controlSize = .small
+
+        row.addArrangedSubview(titleLabel)
+        row.addArrangedSubview(checkbox)
 
         return row
     }
@@ -200,7 +247,7 @@ private final class SettingsView: NSView {
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 8
-        row.widthAnchor.constraint(equalToConstant: settingsWindowWidth - settingsPadding * 2).isActive = true
+        row.widthAnchor.constraint(equalToConstant: settingsWindowWidth - settingsPadding * 2 - settingsSectionPadding * 2).isActive = true
 
         return row
     }
@@ -208,7 +255,8 @@ private final class SettingsView: NSView {
     private func makeTitleLabel(text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.textColor = .secondaryLabelColor
-        label.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        label.alignment = .right
+        label.widthAnchor.constraint(equalToConstant: settingsLabelWidth).isActive = true
 
         return label
     }
