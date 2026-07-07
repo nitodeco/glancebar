@@ -11,10 +11,10 @@ public struct ThroughputFormat: Equatable {
 public enum ByteFormatter {
     public static func formatThroughputParts(bytesPerSecond: UInt64) -> ThroughputFormat {
         if Double(bytesPerSecond) >= bytesPerMegabyte {
-            return ThroughputFormat(value: formatDecimal(value: Double(bytesPerSecond) / bytesPerMegabyte), unit: "MB/s")
+            return ThroughputFormat(value: formatDecimal(value: Double(bytesPerSecond) / bytesPerMegabyte), unit: "MB")
         }
 
-        return ThroughputFormat(value: formatDecimal(value: Double(bytesPerSecond) / bytesPerKilobyte), unit: "KB/s")
+        return ThroughputFormat(value: formatDecimal(value: Double(bytesPerSecond) / bytesPerKilobyte), unit: "KB")
     }
 
     public static func formatThroughput(bytesPerSecond: UInt64) -> String {
