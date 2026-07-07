@@ -15,7 +15,7 @@ private let valueFontSize: CGFloat = 12
 private let networkFontSize: CGFloat = 10
 private let networkValueWidth: CGFloat = 32
 private let networkUnitXOffset: CGFloat = 36
-private let contentHorizontalPadding: CGFloat = 6
+private let contentHorizontalPadding: CGFloat = 12
 private let backgroundHorizontalInset: CGFloat = 1
 private let backgroundVerticalInset: CGFloat = 2
 
