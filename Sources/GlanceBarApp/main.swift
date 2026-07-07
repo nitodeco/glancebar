@@ -5,12 +5,15 @@ private let metricsTimerToleranceInSeconds: TimeInterval = 0.5
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let statusItem = NSStatusBar.system.statusItem(withLength: StatusMetricsView.preferredSize.width)
+    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let metricsReader = SystemMetricsReader()
-    private let metricsView = StatusMetricsView(frame: NSRect(origin: .zero, size: StatusMetricsView.preferredSize))
+    private let metricsView = StatusMetricsView(frame: .zero)
     private let configurationStore: AppConfigurationStore
     private var configuration: AppConfiguration
+    private var maybeLatestSnapshot: MetricsSnapshot?
+    private var maybeGpuUsagePercent: Int?
     private var timer: Timer?
+    private var gpuTimer: Timer?
     private var settingsWindowController: SettingsWindowController?
 
     override init() {
@@ -26,14 +29,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = makeMenu()
         updateMetrics()
         scheduleTimer()
+        scheduleGpuTimer()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
+        gpuTimer?.invalidate()
     }
 
     @objc private func updateMetrics() {
-        metricsView.snapshot = metricsReader.readSnapshot()
+        let snapshot = metricsReader.readSnapshot()
+        maybeLatestSnapshot = MetricsSnapshot(
+            cpuUsagePercent: snapshot.cpuUsagePercent,
+            gpuUsagePercent: configuration.isGpuEnabled ? maybeGpuUsagePercent : nil,
+            ramUsagePercent: snapshot.ramUsagePercent,
+            ssdUsagePercent: snapshot.ssdUsagePercent,
+            networkUploadBytesPerSecond: snapshot.networkUploadBytesPerSecond,
+            networkDownloadBytesPerSecond: snapshot.networkDownloadBytesPerSecond
+        )
+        syncMetricsViewSnapshot()
+    }
+
+    @objc private func updateGpuMetrics() {
+        maybeGpuUsagePercent = metricsReader.readGpuUsagePercent()
+        syncMetricsViewSnapshot()
+    }
+
+    private func syncMetricsViewSnapshot() {
+        guard let maybeLatestSnapshot else {
+            return
+        }
+
+        metricsView.snapshot = MetricsSnapshot(
+            cpuUsagePercent: maybeLatestSnapshot.cpuUsagePercent,
+            gpuUsagePercent: configuration.isGpuEnabled ? maybeGpuUsagePercent : nil,
+            ramUsagePercent: maybeLatestSnapshot.ramUsagePercent,
+            ssdUsagePercent: maybeLatestSnapshot.ssdUsagePercent,
+            networkUploadBytesPerSecond: maybeLatestSnapshot.networkUploadBytesPerSecond,
+            networkDownloadBytesPerSecond: maybeLatestSnapshot.networkDownloadBytesPerSecond
+        )
     }
 
     private func scheduleTimer() {
@@ -48,14 +82,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer?.tolerance = metricsTimerToleranceInSeconds
     }
 
+    private func scheduleGpuTimer() {
+        gpuTimer?.invalidate()
+        maybeGpuUsagePercent = nil
+
+        guard configuration.isGpuEnabled else {
+            syncMetricsViewSnapshot()
+            return
+        }
+
+        updateGpuMetrics()
+        gpuTimer = Timer.scheduledTimer(
+            timeInterval: configuration.gpuPollingIntervalInSeconds,
+            target: self,
+            selector: #selector(updateGpuMetrics),
+            userInfo: nil,
+            repeats: true
+        )
+        gpuTimer?.tolerance = metricsTimerToleranceInSeconds
+    }
+
     private func configureStatusButton() {
         guard let button = statusItem.button else {
             return
         }
 
-        metricsView.autoresizingMask = [.width, .height]
-        metricsView.frame = button.bounds
+        updateStatusItemSize()
         button.addSubview(metricsView)
+    }
+
+    private func updateStatusItemSize() {
+        let preferredSize = StatusMetricsView.preferredSize(configuration: configuration)
+        statusItem.length = preferredSize.width
+        metricsView.frame = NSRect(origin: .zero, size: preferredSize)
     }
 
     private func makeMenu() -> NSMenu {
@@ -81,12 +140,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func apply(configuration newConfiguration: AppConfiguration) {
         let previousPollingIntervalInSeconds = configuration.pollingIntervalInSeconds
+        let previousIsGpuEnabled = configuration.isGpuEnabled
+        let previousGpuPollingIntervalInSeconds = configuration.gpuPollingIntervalInSeconds
         configuration = newConfiguration
         configurationStore.save(newConfiguration)
         metricsView.configuration = newConfiguration
+        updateStatusItemSize()
+        syncMetricsViewSnapshot()
 
         if previousPollingIntervalInSeconds != newConfiguration.pollingIntervalInSeconds {
             scheduleTimer()
+        }
+
+        if previousIsGpuEnabled != newConfiguration.isGpuEnabled || previousGpuPollingIntervalInSeconds != newConfiguration.gpuPollingIntervalInSeconds {
+            scheduleGpuTimer()
         }
     }
 }

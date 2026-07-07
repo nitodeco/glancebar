@@ -2,6 +2,8 @@ import AppKit
 
 let minimumPollingIntervalInSeconds: TimeInterval = 1
 let maximumPollingIntervalInSeconds: TimeInterval = 60
+let minimumGpuPollingIntervalInSeconds: TimeInterval = 1
+let maximumGpuPollingIntervalInSeconds: TimeInterval = 60
 let minimumWarningThresholdPercent = 1
 let maximumWarningThresholdPercent = 100
 let colorPresets = [
@@ -15,11 +17,15 @@ let colorPresets = [
 ]
 
 private let pollingIntervalKey = "pollingIntervalInSeconds"
+private let isGpuEnabledKey = "isGpuEnabled"
+private let gpuPollingIntervalKey = "gpuPollingIntervalInSeconds"
 private let warningThresholdKey = "warningThresholdPercent"
 private let warningColorKey = "warningColor"
 private let uploadColorKey = "uploadColor"
 private let downloadColorKey = "downloadColor"
 private let defaultPollingIntervalInSeconds: TimeInterval = 3
+private let defaultIsGpuEnabled = false
+private let defaultGpuPollingIntervalInSeconds: TimeInterval = 3
 private let defaultWarningThresholdPercent = 80
 private let defaultWarningColorID = "red"
 private let defaultUploadColorID = "purple"
@@ -27,6 +33,8 @@ private let defaultDownloadColorID = "blue"
 
 struct AppConfiguration {
     let pollingIntervalInSeconds: TimeInterval
+    let isGpuEnabled: Bool
+    let gpuPollingIntervalInSeconds: TimeInterval
     let warningThresholdPercent: Int
     let warningColorID: String
     let uploadColorID: String
@@ -58,6 +66,12 @@ final class AppConfigurationStore {
             minValue: minimumPollingIntervalInSeconds,
             maxValue: maximumPollingIntervalInSeconds
         )
+        let gpuPollingIntervalInSeconds = clamp(
+            value: userDefaults.double(forKey: gpuPollingIntervalKey),
+            fallback: defaultConfiguration.gpuPollingIntervalInSeconds,
+            minValue: minimumGpuPollingIntervalInSeconds,
+            maxValue: maximumGpuPollingIntervalInSeconds
+        )
         let warningThresholdPercent = clamp(
             value: userDefaults.integer(forKey: warningThresholdKey),
             fallback: defaultConfiguration.warningThresholdPercent,
@@ -67,6 +81,8 @@ final class AppConfigurationStore {
 
         return AppConfiguration(
             pollingIntervalInSeconds: pollingIntervalInSeconds,
+            isGpuEnabled: userDefaults.object(forKey: isGpuEnabledKey) as? Bool ?? defaultConfiguration.isGpuEnabled,
+            gpuPollingIntervalInSeconds: gpuPollingIntervalInSeconds,
             warningThresholdPercent: warningThresholdPercent,
             warningColorID: readColorID(forKey: warningColorKey, fallback: defaultConfiguration.warningColorID),
             uploadColorID: readColorID(forKey: uploadColorKey, fallback: defaultConfiguration.uploadColorID),
@@ -76,6 +92,8 @@ final class AppConfigurationStore {
 
     func save(_ configuration: AppConfiguration) {
         userDefaults.set(configuration.pollingIntervalInSeconds, forKey: pollingIntervalKey)
+        userDefaults.set(configuration.isGpuEnabled, forKey: isGpuEnabledKey)
+        userDefaults.set(configuration.gpuPollingIntervalInSeconds, forKey: gpuPollingIntervalKey)
         userDefaults.set(configuration.warningThresholdPercent, forKey: warningThresholdKey)
         userDefaults.set(configuration.warningColorID, forKey: warningColorKey)
         userDefaults.set(configuration.uploadColorID, forKey: uploadColorKey)
@@ -92,6 +110,8 @@ final class AppConfigurationStore {
 func makeDefaultAppConfiguration() -> AppConfiguration {
     AppConfiguration(
         pollingIntervalInSeconds: defaultPollingIntervalInSeconds,
+        isGpuEnabled: defaultIsGpuEnabled,
+        gpuPollingIntervalInSeconds: defaultGpuPollingIntervalInSeconds,
         warningThresholdPercent: defaultWarningThresholdPercent,
         warningColorID: defaultWarningColorID,
         uploadColorID: defaultUploadColorID,
@@ -108,12 +128,16 @@ func getColorPreset(id maybeColorID: String?) -> ColorPreset? {
 extension AppConfiguration {
     init(
         pollingIntervalInSeconds: TimeInterval,
+        isGpuEnabled: Bool,
+        gpuPollingIntervalInSeconds: TimeInterval,
         warningThresholdPercent: Int,
         warningColorID: String,
         uploadColorID: String,
         downloadColorID: String
     ) {
         self.pollingIntervalInSeconds = pollingIntervalInSeconds
+        self.isGpuEnabled = isGpuEnabled
+        self.gpuPollingIntervalInSeconds = gpuPollingIntervalInSeconds
         self.warningThresholdPercent = warningThresholdPercent
         self.warningColorID = warningColorID
         self.uploadColorID = uploadColorID

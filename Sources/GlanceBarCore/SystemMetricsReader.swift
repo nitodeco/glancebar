@@ -1,8 +1,12 @@
 import Darwin
 import Foundation
+import IOKit
 import SystemConfiguration
 
 private let dataVolumePath = "/System/Volumes/Data"
+private let gpuAcceleratorClassName = "IOAccelerator"
+private let gpuPerformanceStatisticsKey = "PerformanceStatistics"
+private let gpuDeviceUtilizationKey = "Device Utilization %"
 private let networkIpv4StateKey = "State:/Network/Global/IPv4"
 private let networkIpv6StateKey = "State:/Network/Global/IPv6"
 private let primaryInterfaceKey = "PrimaryInterface"
@@ -43,6 +47,10 @@ public final class SystemMetricsReader {
             networkUploadBytesPerSecond: networkThroughput.uploadBytesPerSecond,
             networkDownloadBytesPerSecond: networkThroughput.downloadBytesPerSecond
         )
+    }
+
+    public func readGpuUsagePercent() -> Int {
+        probe.readGpuUsagePercent() ?? 0
     }
 
     private func readCpuUsagePercent() -> Int {
@@ -139,6 +147,7 @@ public final class SystemMetricsReader {
 struct SystemMetricsProbe {
     let readRamUsagePercent: () -> Int
     let readSsdUsagePercent: () -> Int
+    let readGpuUsagePercent: () -> Int?
     let readNetworkCounters: () -> NetworkCounters
 }
 
@@ -218,6 +227,53 @@ private func readLiveSsdUsagePercent() -> Int {
     }
 }
 
+private func readLiveGpuUsagePercent() -> Int? {
+    guard let matchingDictionary = IOServiceMatching(gpuAcceleratorClassName) else {
+        return nil
+    }
+
+    var iterator = io_iterator_t()
+    let result = IOServiceGetMatchingServices(kIOMainPortDefault, matchingDictionary, &iterator)
+
+    guard result == KERN_SUCCESS else {
+        return nil
+    }
+
+    defer {
+        IOObjectRelease(iterator)
+    }
+
+    var utilizationPercents: [Int] = []
+    var service = IOIteratorNext(iterator)
+
+    while service != 0 {
+        if let maybeUtilizationPercent = readGpuUtilizationPercent(service: service) {
+            utilizationPercents.append(maybeUtilizationPercent)
+        }
+
+        IOObjectRelease(service)
+        service = IOIteratorNext(iterator)
+    }
+
+    return utilizationPercents.max()
+}
+
+private func readGpuUtilizationPercent(service: io_object_t) -> Int? {
+    guard
+        let maybeStatistics = IORegistryEntryCreateCFProperty(
+            service,
+            gpuPerformanceStatisticsKey as CFString,
+            kCFAllocatorDefault,
+            0
+        )?.takeRetainedValue() as? [String: Any],
+        let maybeUtilizationPercent = maybeStatistics[gpuDeviceUtilizationKey] as? NSNumber
+    else {
+        return nil
+    }
+
+    return clampPercent(maybeUtilizationPercent.intValue)
+}
+
 private func readLiveNetworkCounters() -> NetworkCounters {
     var maybeInterfaces: UnsafeMutablePointer<ifaddrs>?
     var uploadBytes: UInt64 = 0
@@ -268,6 +324,7 @@ private func makeLiveSystemMetricsProbe() -> SystemMetricsProbe {
     SystemMetricsProbe(
         readRamUsagePercent: readLiveRamUsagePercent,
         readSsdUsagePercent: readLiveSsdUsagePercent,
+        readGpuUsagePercent: readLiveGpuUsagePercent,
         readNetworkCounters: readLiveNetworkCounters
     )
 }

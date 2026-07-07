@@ -18,15 +18,15 @@ Run all three commands before opening a pull request.
 
 In scope:
 
-- CPU, RAM, SSD, and network throughput display.
+- CPU, optional GPU, RAM, SSD, and network throughput display.
 - Native AppKit menu bar behavior.
-- Compact settings for polling interval, warning threshold, and color presets.
+- Compact settings for polling intervals, warning threshold, and color presets.
 - Small reliability, formatting, packaging, and test improvements.
 
 Out of scope for v1:
 
 - Popovers, charts, histories, and dashboards.
-- Process lists, sensors, GPU polling, or notifications.
+- Process lists, sensors, or notifications.
 - Electron or web runtimes.
 
 ## Code Style

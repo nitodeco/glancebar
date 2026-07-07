@@ -13,6 +13,7 @@ import Testing
 
                 return ssdReadCount * 10
             },
+            readGpuUsagePercent: { 0 },
             readNetworkCounters: {
                 NetworkCounters(uploadBytes: 0, downloadBytes: 0)
             }
@@ -39,6 +40,7 @@ import Testing
         probe: SystemMetricsProbe(
             readRamUsagePercent: { 0 },
             readSsdUsagePercent: { 0 },
+            readGpuUsagePercent: { 0 },
             readNetworkCounters: {
                 networkCounters.removeFirst()
             }
@@ -52,4 +54,19 @@ import Testing
     #expect(firstSnapshot.networkDownloadBytesPerSecond == 0)
     #expect(secondSnapshot.networkUploadBytesPerSecond == 200)
     #expect(secondSnapshot.networkDownloadBytesPerSecond == 400)
+}
+
+@Test func readsGpuUsageFromProbe() {
+    let reader = SystemMetricsReader(
+        probe: SystemMetricsProbe(
+            readRamUsagePercent: { 0 },
+            readSsdUsagePercent: { 0 },
+            readGpuUsagePercent: { 42 },
+            readNetworkCounters: {
+                NetworkCounters(uploadBytes: 0, downloadBytes: 0)
+            }
+        )
+    )
+
+    #expect(reader.readGpuUsagePercent() == 42)
 }

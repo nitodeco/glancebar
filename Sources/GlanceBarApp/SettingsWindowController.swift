@@ -1,7 +1,7 @@
 import AppKit
 
 private let settingsWindowWidth: CGFloat = 280
-private let settingsWindowHeight: CGFloat = 232
+private let settingsWindowHeight: CGFloat = 282
 private let settingsPadding: CGFloat = 16
 private let settingsRowSpacing: CGFloat = 10
 private let settingsValueWidth: CGFloat = 44
@@ -36,8 +36,11 @@ private final class SettingsView: NSView {
     private var configuration: AppConfiguration
     private let onChange: (AppConfiguration) -> Void
     private let pollingValueLabel = NSTextField(labelWithString: "")
+    private let gpuPollingValueLabel = NSTextField(labelWithString: "")
     private let thresholdValueLabel = NSTextField(labelWithString: "")
+    private let gpuEnabledButton = NSButton(checkboxWithTitle: "Show GPU", target: nil, action: nil)
     private let pollingStepper = NSStepper()
+    private let gpuPollingStepper = NSStepper()
     private let thresholdStepper = NSStepper()
     private let warningColorMenu = NSPopUpButton()
     private let uploadColorMenu = NSPopUpButton()
@@ -72,6 +75,8 @@ private final class SettingsView: NSView {
         ])
 
         stackView.addArrangedSubview(makeNumberRow(label: "Polling", valueLabel: pollingValueLabel, stepper: pollingStepper))
+        stackView.addArrangedSubview(gpuEnabledButton)
+        stackView.addArrangedSubview(makeNumberRow(label: "GPU polling", valueLabel: gpuPollingValueLabel, stepper: gpuPollingStepper))
         stackView.addArrangedSubview(makeNumberRow(label: "Red above", valueLabel: thresholdValueLabel, stepper: thresholdStepper))
         stackView.addArrangedSubview(makeColorRow(label: "Over threshold", colorMenu: warningColorMenu))
         stackView.addArrangedSubview(makeColorRow(label: "Upload", colorMenu: uploadColorMenu))
@@ -79,6 +84,10 @@ private final class SettingsView: NSView {
 
         pollingStepper.target = self
         pollingStepper.action = #selector(updatePollingInterval)
+        gpuEnabledButton.target = self
+        gpuEnabledButton.action = #selector(updateGpuEnabled)
+        gpuPollingStepper.target = self
+        gpuPollingStepper.action = #selector(updateGpuPollingInterval)
         thresholdStepper.target = self
         thresholdStepper.action = #selector(updateWarningThreshold)
         configureColorMenu(warningColorMenu, action: #selector(updateWarningColor))
@@ -171,6 +180,15 @@ private final class SettingsView: NSView {
         pollingStepper.doubleValue = configuration.pollingIntervalInSeconds
         pollingValueLabel.stringValue = "\(Int(configuration.pollingIntervalInSeconds))s"
 
+        gpuEnabledButton.state = configuration.isGpuEnabled ? .on : .off
+        gpuPollingStepper.minValue = minimumGpuPollingIntervalInSeconds
+        gpuPollingStepper.maxValue = maximumGpuPollingIntervalInSeconds
+        gpuPollingStepper.increment = 1
+        gpuPollingStepper.doubleValue = configuration.gpuPollingIntervalInSeconds
+        gpuPollingStepper.isEnabled = configuration.isGpuEnabled
+        gpuPollingValueLabel.stringValue = "\(Int(configuration.gpuPollingIntervalInSeconds))s"
+        gpuPollingValueLabel.textColor = configuration.isGpuEnabled ? .labelColor : .disabledControlTextColor
+
         thresholdStepper.minValue = Double(minimumWarningThresholdPercent)
         thresholdStepper.maxValue = Double(maximumWarningThresholdPercent)
         thresholdStepper.increment = 1
@@ -201,6 +219,36 @@ private final class SettingsView: NSView {
     @objc private func updatePollingInterval() {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: pollingStepper.doubleValue,
+            isGpuEnabled: configuration.isGpuEnabled,
+            gpuPollingIntervalInSeconds: configuration.gpuPollingIntervalInSeconds,
+            warningThresholdPercent: configuration.warningThresholdPercent,
+            warningColorID: configuration.warningColorID,
+            uploadColorID: configuration.uploadColorID,
+            downloadColorID: configuration.downloadColorID
+        )
+        syncControls()
+        onChange(configuration)
+    }
+
+    @objc private func updateGpuEnabled() {
+        configuration = AppConfiguration(
+            pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
+            isGpuEnabled: gpuEnabledButton.state == .on,
+            gpuPollingIntervalInSeconds: configuration.gpuPollingIntervalInSeconds,
+            warningThresholdPercent: configuration.warningThresholdPercent,
+            warningColorID: configuration.warningColorID,
+            uploadColorID: configuration.uploadColorID,
+            downloadColorID: configuration.downloadColorID
+        )
+        syncControls()
+        onChange(configuration)
+    }
+
+    @objc private func updateGpuPollingInterval() {
+        configuration = AppConfiguration(
+            pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
+            isGpuEnabled: configuration.isGpuEnabled,
+            gpuPollingIntervalInSeconds: gpuPollingStepper.doubleValue,
             warningThresholdPercent: configuration.warningThresholdPercent,
             warningColorID: configuration.warningColorID,
             uploadColorID: configuration.uploadColorID,
@@ -213,6 +261,8 @@ private final class SettingsView: NSView {
     @objc private func updateWarningThreshold() {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
+            isGpuEnabled: configuration.isGpuEnabled,
+            gpuPollingIntervalInSeconds: configuration.gpuPollingIntervalInSeconds,
             warningThresholdPercent: thresholdStepper.integerValue,
             warningColorID: configuration.warningColorID,
             uploadColorID: configuration.uploadColorID,
@@ -225,6 +275,8 @@ private final class SettingsView: NSView {
     @objc private func updateWarningColor() {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
+            isGpuEnabled: configuration.isGpuEnabled,
+            gpuPollingIntervalInSeconds: configuration.gpuPollingIntervalInSeconds,
             warningThresholdPercent: configuration.warningThresholdPercent,
             warningColorID: selectedColorID(in: warningColorMenu, fallback: configuration.warningColorID),
             uploadColorID: configuration.uploadColorID,
@@ -236,6 +288,8 @@ private final class SettingsView: NSView {
     @objc private func updateUploadColor() {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
+            isGpuEnabled: configuration.isGpuEnabled,
+            gpuPollingIntervalInSeconds: configuration.gpuPollingIntervalInSeconds,
             warningThresholdPercent: configuration.warningThresholdPercent,
             warningColorID: configuration.warningColorID,
             uploadColorID: selectedColorID(in: uploadColorMenu, fallback: configuration.uploadColorID),
@@ -247,6 +301,8 @@ private final class SettingsView: NSView {
     @objc private func updateDownloadColor() {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
+            isGpuEnabled: configuration.isGpuEnabled,
+            gpuPollingIntervalInSeconds: configuration.gpuPollingIntervalInSeconds,
             warningThresholdPercent: configuration.warningThresholdPercent,
             warningColorID: configuration.warningColorID,
             uploadColorID: configuration.uploadColorID,

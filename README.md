@@ -2,7 +2,7 @@
 
 GlanceBar is a lightweight native macOS menu bar app for glanceable resource usage.
 
-It shows CPU, RAM, SSD usage, and network throughput in a compact `NSStatusItem`. There are no charts, popovers, settings, sensors, process lists, notifications, or web runtimes.
+It shows CPU, optional GPU, RAM, SSD usage, and network throughput in a compact `NSStatusItem`. There are no charts, popovers, sensors, process lists, notifications, or web runtimes.
 
 ## Requirements
 
@@ -44,10 +44,11 @@ swift test
 ## Behavior
 
 - CPU, RAM, and network throughput update every 3 seconds.
+- GPU display is optional and has its own polling interval.
 - SSD usage updates every 30 seconds.
-- CPU, RAM, and SSD values turn red above 80 percent.
+- CPU, GPU, RAM, and SSD values turn red above 80 percent.
 - Upload is purple, download is blue.
-- Polling interval, warning threshold, warning color preset, upload color preset, and download color preset are configurable.
+- Polling interval, GPU polling interval, warning threshold, warning color preset, upload color preset, and download color preset are configurable.
 
 ## License
 
