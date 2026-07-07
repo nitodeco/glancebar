@@ -4,6 +4,14 @@ let minimumPollingIntervalInSeconds: TimeInterval = 1
 let maximumPollingIntervalInSeconds: TimeInterval = 60
 let minimumWarningThresholdPercent = 1
 let maximumWarningThresholdPercent = 100
+let colorPresets = [
+    ColorPreset(id: "red", title: "Red", color: .systemRed),
+    ColorPreset(id: "orange", title: "Orange", color: .systemOrange),
+    ColorPreset(id: "purple", title: "Purple", color: .systemPurple),
+    ColorPreset(id: "blue", title: "Blue", color: .systemBlue),
+    ColorPreset(id: "teal", title: "Teal", color: .systemTeal),
+    ColorPreset(id: "green", title: "Green", color: .systemGreen)
+]
 
 private let pollingIntervalKey = "pollingIntervalInSeconds"
 private let warningThresholdKey = "warningThresholdPercent"
@@ -12,13 +20,25 @@ private let uploadColorKey = "uploadColor"
 private let downloadColorKey = "downloadColor"
 private let defaultPollingIntervalInSeconds: TimeInterval = 3
 private let defaultWarningThresholdPercent = 80
+private let defaultWarningColorID = "red"
+private let defaultUploadColorID = "purple"
+private let defaultDownloadColorID = "blue"
 
 struct AppConfiguration {
     let pollingIntervalInSeconds: TimeInterval
     let warningThresholdPercent: Int
+    let warningColorID: String
+    let uploadColorID: String
+    let downloadColorID: String
     let warningColor: NSColor
     let uploadColor: NSColor
     let downloadColor: NSColor
+}
+
+struct ColorPreset {
+    let id: String
+    let title: String
+    let color: NSColor
 }
 
 @MainActor
@@ -47,37 +67,24 @@ final class AppConfigurationStore {
         return AppConfiguration(
             pollingIntervalInSeconds: pollingIntervalInSeconds,
             warningThresholdPercent: warningThresholdPercent,
-            warningColor: readColor(forKey: warningColorKey, fallback: defaultConfiguration.warningColor),
-            uploadColor: readColor(forKey: uploadColorKey, fallback: defaultConfiguration.uploadColor),
-            downloadColor: readColor(forKey: downloadColorKey, fallback: defaultConfiguration.downloadColor)
+            warningColorID: readColorID(forKey: warningColorKey, fallback: defaultConfiguration.warningColorID),
+            uploadColorID: readColorID(forKey: uploadColorKey, fallback: defaultConfiguration.uploadColorID),
+            downloadColorID: readColorID(forKey: downloadColorKey, fallback: defaultConfiguration.downloadColorID)
         )
     }
 
     func save(_ configuration: AppConfiguration) {
         userDefaults.set(configuration.pollingIntervalInSeconds, forKey: pollingIntervalKey)
         userDefaults.set(configuration.warningThresholdPercent, forKey: warningThresholdKey)
-        saveColor(configuration.warningColor, forKey: warningColorKey)
-        saveColor(configuration.uploadColor, forKey: uploadColorKey)
-        saveColor(configuration.downloadColor, forKey: downloadColorKey)
+        userDefaults.set(configuration.warningColorID, forKey: warningColorKey)
+        userDefaults.set(configuration.uploadColorID, forKey: uploadColorKey)
+        userDefaults.set(configuration.downloadColorID, forKey: downloadColorKey)
     }
 
-    private func readColor(forKey key: String, fallback: NSColor) -> NSColor {
-        guard
-            let maybeColorArchive = userDefaults.data(forKey: key),
-            let maybeColor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: maybeColorArchive)
-        else {
-            return fallback
-        }
+    private func readColorID(forKey key: String, fallback: String) -> String {
+        let maybeColorID = userDefaults.string(forKey: key)
 
-        return maybeColor
-    }
-
-    private func saveColor(_ color: NSColor, forKey key: String) {
-        guard let maybeColorArchive = try? NSKeyedArchiver.archivedData(withRootObject: color, requiringSecureCoding: true) else {
-            return
-        }
-
-        userDefaults.set(maybeColorArchive, forKey: key)
+        return getColorPreset(id: maybeColorID)?.id ?? fallback
     }
 }
 
@@ -85,10 +92,35 @@ func makeDefaultAppConfiguration() -> AppConfiguration {
     AppConfiguration(
         pollingIntervalInSeconds: defaultPollingIntervalInSeconds,
         warningThresholdPercent: defaultWarningThresholdPercent,
-        warningColor: .systemRed,
-        uploadColor: .systemPurple,
-        downloadColor: .systemBlue
+        warningColorID: defaultWarningColorID,
+        uploadColorID: defaultUploadColorID,
+        downloadColorID: defaultDownloadColorID
     )
+}
+
+func getColorPreset(id maybeColorID: String?) -> ColorPreset? {
+    colorPresets.first { colorPreset in
+        colorPreset.id == maybeColorID
+    }
+}
+
+extension AppConfiguration {
+    init(
+        pollingIntervalInSeconds: TimeInterval,
+        warningThresholdPercent: Int,
+        warningColorID: String,
+        uploadColorID: String,
+        downloadColorID: String
+    ) {
+        self.pollingIntervalInSeconds = pollingIntervalInSeconds
+        self.warningThresholdPercent = warningThresholdPercent
+        self.warningColorID = warningColorID
+        self.uploadColorID = uploadColorID
+        self.downloadColorID = downloadColorID
+        warningColor = getColorPreset(id: warningColorID)?.color ?? .systemRed
+        uploadColor = getColorPreset(id: uploadColorID)?.color ?? .systemPurple
+        downloadColor = getColorPreset(id: downloadColorID)?.color ?? .systemBlue
+    }
 }
 
 private func clamp(value: TimeInterval, fallback: TimeInterval, minValue: TimeInterval, maxValue: TimeInterval) -> TimeInterval {

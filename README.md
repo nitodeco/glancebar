@@ -47,7 +47,7 @@ swift test
 - SSD usage updates every 30 seconds.
 - CPU, RAM, and SSD values turn red above 80 percent.
 - Upload is purple, download is blue.
-- Polling interval, warning threshold, warning color, upload color, and download color are configurable.
+- Polling interval, warning threshold, warning color preset, upload color preset, and download color preset are configurable.
 
 ## License
 

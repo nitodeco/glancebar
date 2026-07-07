@@ -20,7 +20,7 @@ In scope:
 
 - CPU, RAM, SSD, and network throughput display.
 - Native AppKit menu bar behavior.
-- Compact settings for polling interval, warning threshold, and colors.
+- Compact settings for polling interval, warning threshold, and color presets.
 - Small reliability, formatting, packaging, and test improvements.
 
 Out of scope for v1:

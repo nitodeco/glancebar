@@ -5,8 +5,7 @@ private let settingsWindowHeight: CGFloat = 232
 private let settingsPadding: CGFloat = 16
 private let settingsRowSpacing: CGFloat = 10
 private let settingsValueWidth: CGFloat = 44
-private let colorWellWidth: CGFloat = 54
-private let colorWellHeight: CGFloat = 24
+private let colorPresetMenuWidth: CGFloat = 96
 
 @MainActor
 final class SettingsWindowController: NSWindowController {
@@ -39,9 +38,9 @@ private final class SettingsView: NSView {
     private let thresholdValueLabel = NSTextField(labelWithString: "")
     private let pollingStepper = NSStepper()
     private let thresholdStepper = NSStepper()
-    private let warningColorWell = NSColorWell()
-    private let uploadColorWell = NSColorWell()
-    private let downloadColorWell = NSColorWell()
+    private let warningColorMenu = NSPopUpButton()
+    private let uploadColorMenu = NSPopUpButton()
+    private let downloadColorMenu = NSPopUpButton()
 
     init(configuration: AppConfiguration, onChange: @escaping (AppConfiguration) -> Void) {
         self.configuration = configuration
@@ -73,20 +72,17 @@ private final class SettingsView: NSView {
 
         stackView.addArrangedSubview(makeNumberRow(label: "Polling", valueLabel: pollingValueLabel, stepper: pollingStepper))
         stackView.addArrangedSubview(makeNumberRow(label: "Red above", valueLabel: thresholdValueLabel, stepper: thresholdStepper))
-        stackView.addArrangedSubview(makeColorRow(label: "Over threshold", colorWell: warningColorWell))
-        stackView.addArrangedSubview(makeColorRow(label: "Upload", colorWell: uploadColorWell))
-        stackView.addArrangedSubview(makeColorRow(label: "Download", colorWell: downloadColorWell))
+        stackView.addArrangedSubview(makeColorRow(label: "Over threshold", colorMenu: warningColorMenu))
+        stackView.addArrangedSubview(makeColorRow(label: "Upload", colorMenu: uploadColorMenu))
+        stackView.addArrangedSubview(makeColorRow(label: "Download", colorMenu: downloadColorMenu))
 
         pollingStepper.target = self
         pollingStepper.action = #selector(updatePollingInterval)
         thresholdStepper.target = self
         thresholdStepper.action = #selector(updateWarningThreshold)
-        warningColorWell.target = self
-        warningColorWell.action = #selector(updateWarningColor)
-        uploadColorWell.target = self
-        uploadColorWell.action = #selector(updateUploadColor)
-        downloadColorWell.target = self
-        downloadColorWell.action = #selector(updateDownloadColor)
+        configureColorMenu(warningColorMenu, action: #selector(updateWarningColor))
+        configureColorMenu(uploadColorMenu, action: #selector(updateUploadColor))
+        configureColorMenu(downloadColorMenu, action: #selector(updateDownloadColor))
     }
 
     private func makeNumberRow(label: String, valueLabel: NSTextField, stepper: NSStepper) -> NSStackView {
@@ -103,15 +99,14 @@ private final class SettingsView: NSView {
         return row
     }
 
-    private func makeColorRow(label: String, colorWell: NSColorWell) -> NSStackView {
+    private func makeColorRow(label: String, colorMenu: NSPopUpButton) -> NSStackView {
         let row = makeRowStackView()
         let titleLabel = makeTitleLabel(text: label)
-        colorWell.controlSize = .small
-        colorWell.widthAnchor.constraint(equalToConstant: colorWellWidth).isActive = true
-        colorWell.heightAnchor.constraint(equalToConstant: colorWellHeight).isActive = true
+        colorMenu.controlSize = .small
+        colorMenu.widthAnchor.constraint(equalToConstant: colorPresetMenuWidth).isActive = true
 
         row.addArrangedSubview(titleLabel)
-        row.addArrangedSubview(colorWell)
+        row.addArrangedSubview(colorMenu)
 
         return row
     }
@@ -134,6 +129,17 @@ private final class SettingsView: NSView {
         return label
     }
 
+    private func configureColorMenu(_ colorMenu: NSPopUpButton, action: Selector) {
+        colorMenu.removeAllItems()
+        colorMenu.target = self
+        colorMenu.action = action
+
+        for colorPreset in colorPresets {
+            colorMenu.addItem(withTitle: colorPreset.title)
+            colorMenu.item(withTitle: colorPreset.title)?.representedObject = colorPreset.id
+        }
+    }
+
     private func syncControls() {
         pollingStepper.minValue = minimumPollingIntervalInSeconds
         pollingStepper.maxValue = maximumPollingIntervalInSeconds
@@ -147,18 +153,34 @@ private final class SettingsView: NSView {
         thresholdStepper.integerValue = configuration.warningThresholdPercent
         thresholdValueLabel.stringValue = "\(configuration.warningThresholdPercent)%"
 
-        warningColorWell.color = configuration.warningColor
-        uploadColorWell.color = configuration.uploadColor
-        downloadColorWell.color = configuration.downloadColor
+        selectColorPreset(id: configuration.warningColorID, in: warningColorMenu)
+        selectColorPreset(id: configuration.uploadColorID, in: uploadColorMenu)
+        selectColorPreset(id: configuration.downloadColorID, in: downloadColorMenu)
+    }
+
+    private func selectColorPreset(id colorID: String, in colorMenu: NSPopUpButton) {
+        guard let colorPreset = getColorPreset(id: colorID) else {
+            return
+        }
+
+        colorMenu.selectItem(withTitle: colorPreset.title)
+    }
+
+    private func selectedColorID(in colorMenu: NSPopUpButton, fallback: String) -> String {
+        guard let maybeColorID = colorMenu.selectedItem?.representedObject as? String else {
+            return fallback
+        }
+
+        return getColorPreset(id: maybeColorID)?.id ?? fallback
     }
 
     @objc private func updatePollingInterval() {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: pollingStepper.doubleValue,
             warningThresholdPercent: configuration.warningThresholdPercent,
-            warningColor: configuration.warningColor,
-            uploadColor: configuration.uploadColor,
-            downloadColor: configuration.downloadColor
+            warningColorID: configuration.warningColorID,
+            uploadColorID: configuration.uploadColorID,
+            downloadColorID: configuration.downloadColorID
         )
         syncControls()
         onChange(configuration)
@@ -168,9 +190,9 @@ private final class SettingsView: NSView {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
             warningThresholdPercent: thresholdStepper.integerValue,
-            warningColor: configuration.warningColor,
-            uploadColor: configuration.uploadColor,
-            downloadColor: configuration.downloadColor
+            warningColorID: configuration.warningColorID,
+            uploadColorID: configuration.uploadColorID,
+            downloadColorID: configuration.downloadColorID
         )
         syncControls()
         onChange(configuration)
@@ -180,9 +202,9 @@ private final class SettingsView: NSView {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
             warningThresholdPercent: configuration.warningThresholdPercent,
-            warningColor: warningColorWell.color,
-            uploadColor: configuration.uploadColor,
-            downloadColor: configuration.downloadColor
+            warningColorID: selectedColorID(in: warningColorMenu, fallback: configuration.warningColorID),
+            uploadColorID: configuration.uploadColorID,
+            downloadColorID: configuration.downloadColorID
         )
         onChange(configuration)
     }
@@ -191,9 +213,9 @@ private final class SettingsView: NSView {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
             warningThresholdPercent: configuration.warningThresholdPercent,
-            warningColor: configuration.warningColor,
-            uploadColor: uploadColorWell.color,
-            downloadColor: configuration.downloadColor
+            warningColorID: configuration.warningColorID,
+            uploadColorID: selectedColorID(in: uploadColorMenu, fallback: configuration.uploadColorID),
+            downloadColorID: configuration.downloadColorID
         )
         onChange(configuration)
     }
@@ -202,9 +224,9 @@ private final class SettingsView: NSView {
         configuration = AppConfiguration(
             pollingIntervalInSeconds: configuration.pollingIntervalInSeconds,
             warningThresholdPercent: configuration.warningThresholdPercent,
-            warningColor: configuration.warningColor,
-            uploadColor: configuration.uploadColor,
-            downloadColor: downloadColorWell.color
+            warningColorID: configuration.warningColorID,
+            uploadColorID: configuration.uploadColorID,
+            downloadColorID: selectedColorID(in: downloadColorMenu, fallback: configuration.downloadColorID)
         )
         onChange(configuration)
     }

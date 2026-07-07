@@ -48,8 +48,8 @@ CPU   RAM   SSD    ↑ 3 KB/s
 
 - Polling interval.
 - Threshold when CPU, RAM, and SSD values use the warning color.
-- Warning color for CPU, RAM, and SSD values above the threshold.
-- Upload and download colors for network values.
+- Warning color preset for CPU, RAM, and SSD values above the threshold.
+- Upload and download color presets for network values.
 
 ## Non-Goals
 
