@@ -3,11 +3,11 @@ import GlanceBarCore
 
 private let ramColumnX: CGFloat = 36
 private let ssdColumnX: CGFloat = 72
-private let networkColumnX: CGFloat = 108
+private let networkColumnX: CGFloat = 102
 private let enabledGpuColumnX: CGFloat = 36
 private let enabledRamColumnX: CGFloat = 72
 private let enabledSsdColumnX: CGFloat = 108
-private let enabledNetworkColumnX: CGFloat = 144
+private let enabledNetworkColumnX: CGFloat = 138
 private let labelY: CGFloat = 12
 private let valueY: CGFloat = 0
 private let labelFontSize: CGFloat = 9
@@ -16,7 +16,7 @@ private let networkFontSize: CGFloat = 10
 
 final class StatusMetricsView: NSView {
     static func preferredSize(configuration: AppConfiguration) -> NSSize {
-        NSSize(width: configuration.isGpuEnabled ? 202 : 166, height: 24)
+        NSSize(width: configuration.isGpuEnabled ? 196 : 160, height: 24)
     }
 
     var configuration = makeDefaultAppConfiguration() {
