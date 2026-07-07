@@ -40,7 +40,8 @@ CPU   RAM   SSD    ↑ 3 KB/s
 
 ## Interaction
 
-- Clicking the menu bar item opens a tiny settings menu with Quit.
+- Clicking the menu bar item opens a tiny menu with Settings and Quit.
+- Clicking Settings opens a lightweight settings window.
 - No popover or secondary dashboard.
 
 ## Settings

@@ -33,7 +33,7 @@ The bundle is written to:
 open .build/release/GlanceBar.app
 ```
 
-Click the menu bar item to open the settings menu.
+Click the menu bar item to open the menu. Choose Settings to open the settings window.
 
 ## Test
 

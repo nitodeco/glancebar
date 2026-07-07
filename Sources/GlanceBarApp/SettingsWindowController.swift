@@ -1,15 +1,38 @@
 import AppKit
 
-private let settingsMenuWidth: CGFloat = 248
-private let settingsMenuHeight: CGFloat = 226
-private let settingsPadding: CGFloat = 12
-private let settingsRowSpacing: CGFloat = 8
-private let settingsValueWidth: CGFloat = 40
-private let colorWellWidth: CGFloat = 48
+private let settingsWindowWidth: CGFloat = 280
+private let settingsWindowHeight: CGFloat = 232
+private let settingsPadding: CGFloat = 16
+private let settingsRowSpacing: CGFloat = 10
+private let settingsValueWidth: CGFloat = 44
+private let colorWellWidth: CGFloat = 54
 private let colorWellHeight: CGFloat = 24
 
 @MainActor
-final class SettingsMenuView: NSView {
+final class SettingsWindowController: NSWindowController {
+    init(configuration: AppConfiguration, onChange: @escaping (AppConfiguration) -> Void) {
+        let settingsView = SettingsView(configuration: configuration, onChange: onChange)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: settingsWindowWidth, height: settingsWindowHeight),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "GlanceBar Settings"
+        window.contentView = settingsView
+        window.isReleasedWhenClosed = false
+        window.center()
+        super.init(window: window)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+}
+
+@MainActor
+private final class SettingsView: NSView {
     private var configuration: AppConfiguration
     private let onChange: (AppConfiguration) -> Void
     private let pollingValueLabel = NSTextField(labelWithString: "")
@@ -23,7 +46,7 @@ final class SettingsMenuView: NSView {
     init(configuration: AppConfiguration, onChange: @escaping (AppConfiguration) -> Void) {
         self.configuration = configuration
         self.onChange = onChange
-        super.init(frame: NSRect(x: 0, y: 0, width: settingsMenuWidth, height: settingsMenuHeight))
+        super.init(frame: NSRect(x: 0, y: 0, width: settingsWindowWidth, height: settingsWindowHeight))
         buildView()
         syncControls()
     }
@@ -48,7 +71,6 @@ final class SettingsMenuView: NSView {
             stackView.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -settingsPadding)
         ])
 
-        stackView.addArrangedSubview(makeHeaderLabel())
         stackView.addArrangedSubview(makeNumberRow(label: "Polling", valueLabel: pollingValueLabel, stepper: pollingStepper))
         stackView.addArrangedSubview(makeNumberRow(label: "Red above", valueLabel: thresholdValueLabel, stepper: thresholdStepper))
         stackView.addArrangedSubview(makeColorRow(label: "Over threshold", colorWell: warningColorWell))
@@ -65,13 +87,6 @@ final class SettingsMenuView: NSView {
         uploadColorWell.action = #selector(updateUploadColor)
         downloadColorWell.target = self
         downloadColorWell.action = #selector(updateDownloadColor)
-    }
-
-    private func makeHeaderLabel() -> NSTextField {
-        let label = NSTextField(labelWithString: "Settings")
-        label.font = .systemFont(ofSize: 13, weight: .semibold)
-
-        return label
     }
 
     private func makeNumberRow(label: String, valueLabel: NSTextField, stepper: NSStepper) -> NSStackView {
@@ -106,7 +121,7 @@ final class SettingsMenuView: NSView {
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 8
-        row.widthAnchor.constraint(equalToConstant: settingsMenuWidth - settingsPadding * 2).isActive = true
+        row.widthAnchor.constraint(equalToConstant: settingsWindowWidth - settingsPadding * 2).isActive = true
 
         return row
     }

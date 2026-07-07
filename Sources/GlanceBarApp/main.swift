@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let configurationStore: AppConfigurationStore
     private var configuration: AppConfiguration
     private var timer: Timer?
+    private var settingsWindowController: SettingsWindowController?
 
     override init() {
         let configurationStore = AppConfigurationStore()
@@ -59,15 +60,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
-        let settingsItem = NSMenuItem()
-        settingsItem.view = SettingsMenuView(configuration: configuration) { [weak self] configuration in
-            self?.apply(configuration: configuration)
-        }
+        let settingsItem = NSMenuItem(title: "Settings", action: #selector(showSettings), keyEquivalent: ",")
+        settingsItem.target = self
         menu.addItem(settingsItem)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         return menu
+    }
+
+    @objc private func showSettings() {
+        let settingsWindowController = settingsWindowController ?? SettingsWindowController(configuration: configuration) { [weak self] configuration in
+            self?.apply(configuration: configuration)
+        }
+        self.settingsWindowController = settingsWindowController
+        settingsWindowController.showWindow(nil)
+        settingsWindowController.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func apply(configuration newConfiguration: AppConfiguration) {
