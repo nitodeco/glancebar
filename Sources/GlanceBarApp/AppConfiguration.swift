@@ -5,12 +5,13 @@ let maximumPollingIntervalInSeconds: TimeInterval = 60
 let minimumWarningThresholdPercent = 1
 let maximumWarningThresholdPercent = 100
 let colorPresets = [
-    ColorPreset(id: "red", title: "Red", color: NSColor(srgbRed: 0.78, green: 0.10, blue: 0.12, alpha: 1)),
-    ColorPreset(id: "orange", title: "Orange", color: NSColor(srgbRed: 0.76, green: 0.32, blue: 0.00, alpha: 1)),
-    ColorPreset(id: "purple", title: "Purple", color: NSColor(srgbRed: 0.46, green: 0.24, blue: 0.70, alpha: 1)),
-    ColorPreset(id: "blue", title: "Blue", color: NSColor(srgbRed: 0.10, green: 0.34, blue: 0.74, alpha: 1)),
-    ColorPreset(id: "teal", title: "Teal", color: NSColor(srgbRed: 0.00, green: 0.45, blue: 0.50, alpha: 1)),
-    ColorPreset(id: "green", title: "Green", color: NSColor(srgbRed: 0.10, green: 0.48, blue: 0.20, alpha: 1))
+    ColorPreset(id: "red", title: "Red", color: NSColor(srgbRed: 0.86, green: 0.04, blue: 0.08, alpha: 1)),
+    ColorPreset(id: "orange", title: "Orange", color: NSColor(srgbRed: 0.88, green: 0.28, blue: 0.00, alpha: 1)),
+    ColorPreset(id: "yellow", title: "Yellow", color: NSColor(srgbRed: 0.72, green: 0.54, blue: 0.00, alpha: 1)),
+    ColorPreset(id: "purple", title: "Purple", color: NSColor(srgbRed: 0.50, green: 0.12, blue: 0.88, alpha: 1)),
+    ColorPreset(id: "blue", title: "Blue", color: NSColor(srgbRed: 0.00, green: 0.28, blue: 0.88, alpha: 1)),
+    ColorPreset(id: "teal", title: "Teal", color: NSColor(srgbRed: 0.00, green: 0.56, blue: 0.62, alpha: 1)),
+    ColorPreset(id: "green", title: "Green", color: NSColor(srgbRed: 0.00, green: 0.58, blue: 0.18, alpha: 1))
 ]
 
 private let pollingIntervalKey = "pollingIntervalInSeconds"
