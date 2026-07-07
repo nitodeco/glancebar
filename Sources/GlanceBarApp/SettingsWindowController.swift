@@ -10,6 +10,10 @@ private let settingsValueWidth: CGFloat = 44
 private let colorPresetMenuWidth: CGFloat = 150
 private let advancedSliderWidth: CGFloat = 150
 private let advancedPreviewSize: CGFloat = 28
+private let metricListHeight: CGFloat = 116
+private let metricCheckboxColumnID = NSUserInterfaceItemIdentifier("enabled")
+private let metricNameColumnID = NSUserInterfaceItemIdentifier("metric")
+private let metricPasteboardType = NSPasteboard.PasteboardType("dev.nitodeco.glancebar.metric")
 private let colorSwatchGlyph = "■"
 
 @MainActor
@@ -44,7 +48,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 }
 
 @MainActor
-private final class SettingsView: NSView {
+private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private var configuration: AppConfiguration
     private let onChange: (AppConfiguration) -> Void
     private let pollingValueLabel = NSTextField(labelWithString: "")
@@ -101,7 +105,7 @@ private final class SettingsView: NSView {
             makeNumberRow(label: "GPU every", valueLabel: gpuMultiplierValueLabel, stepper: gpuMultiplierStepper),
             makeNumberRow(label: "Yellow above", valueLabel: yellowThresholdValueLabel, stepper: yellowThresholdStepper),
             makeNumberRow(label: "Red above", valueLabel: thresholdValueLabel, stepper: thresholdStepper),
-            makeMetricRows()
+            makeMetricList()
         ]))
         tabView.addTabViewItem(makeTabViewItem(label: "Colors", arrangedSubviews: [
             makeColorRow(label: "Yellow", colorMenu: yellowColorMenu),
@@ -191,46 +195,29 @@ private final class SettingsView: NSView {
         return row
     }
 
-    private func makeMetricRows() -> NSStackView {
-        let stackView = NSStackView()
-        stackView.orientation = .vertical
-        stackView.alignment = .leading
-        stackView.spacing = 6
+    private func makeMetricList() -> NSScrollView {
+        let tableView = NSTableView()
+        let checkboxColumn = NSTableColumn(identifier: metricCheckboxColumnID)
+        let metricColumn = NSTableColumn(identifier: metricNameColumnID)
+        checkboxColumn.width = 34
+        metricColumn.width = settingsWindowWidth - settingsPadding * 2 - settingsSectionPadding * 2 - checkboxColumn.width
+        tableView.headerView = nil
+        tableView.rowHeight = 22
+        tableView.intercellSpacing = NSSize(width: 0, height: 2)
+        tableView.addTableColumn(checkboxColumn)
+        tableView.addTableColumn(metricColumn)
+        tableView.delegate = self
+        tableView.dataSource = self
+        tableView.registerForDraggedTypes([metricPasteboardType])
 
-        for metricID in configuration.orderedMetricIDs {
-            guard let metricConfiguration = getMetricConfiguration(id: metricID) else {
-                continue
-            }
+        let scrollView = NSScrollView()
+        scrollView.documentView = tableView
+        scrollView.hasVerticalScroller = false
+        scrollView.borderType = .bezelBorder
+        scrollView.widthAnchor.constraint(equalToConstant: settingsWindowWidth - settingsPadding * 2 - settingsSectionPadding * 2).isActive = true
+        scrollView.heightAnchor.constraint(equalToConstant: metricListHeight).isActive = true
 
-            stackView.addArrangedSubview(makeMetricRow(metricConfiguration: metricConfiguration))
-        }
-
-        return stackView
-    }
-
-    private func makeMetricRow(metricConfiguration: MetricConfiguration) -> NSStackView {
-        let row = makeRowStackView()
-        let titleLabel = makeTitleLabel(text: metricConfiguration.title)
-        let checkbox = NSButton(checkboxWithTitle: "", target: self, action: #selector(updateMetricEnabled))
-        checkbox.controlSize = .small
-        checkbox.state = configuration.enabledMetricIDs.contains(metricConfiguration.id) ? .on : .off
-        checkbox.tag = getMetricTag(metricID: metricConfiguration.id)
-        let upButton = NSButton(title: "Up", target: self, action: #selector(moveMetricUp))
-        let downButton = NSButton(title: "Down", target: self, action: #selector(moveMetricDown))
-        let maybeMetricIndex = configuration.orderedMetricIDs.firstIndex(of: metricConfiguration.id)
-        upButton.controlSize = .small
-        upButton.tag = getMetricTag(metricID: metricConfiguration.id)
-        upButton.isEnabled = maybeMetricIndex != configuration.orderedMetricIDs.startIndex
-        downButton.controlSize = .small
-        downButton.tag = getMetricTag(metricID: metricConfiguration.id)
-        downButton.isEnabled = maybeMetricIndex != configuration.orderedMetricIDs.index(before: configuration.orderedMetricIDs.endIndex)
-
-        row.addArrangedSubview(titleLabel)
-        row.addArrangedSubview(checkbox)
-        row.addArrangedSubview(upButton)
-        row.addArrangedSubview(downButton)
-
-        return row
+        return scrollView
     }
 
     private func makeColorRow(label: String, colorMenu: NSPopUpButton) -> NSStackView {
@@ -511,6 +498,69 @@ private final class SettingsView: NSView {
         }?.element.id
     }
 
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        configuration.orderedMetricIDs.count
+    }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard let maybeMetricID = getOrderedMetricID(row: row), let metricConfiguration = getMetricConfiguration(id: maybeMetricID) else {
+            return nil
+        }
+
+        if tableColumn?.identifier == metricCheckboxColumnID {
+            let checkbox = NSButton(checkboxWithTitle: "", target: self, action: #selector(updateMetricEnabled))
+            checkbox.controlSize = .small
+            checkbox.state = configuration.enabledMetricIDs.contains(metricConfiguration.id) ? .on : .off
+            checkbox.tag = getMetricTag(metricID: metricConfiguration.id)
+
+            return checkbox
+        }
+
+        let label = NSTextField(labelWithString: metricConfiguration.title)
+        label.textColor = NSColor.labelColor
+
+        return label
+    }
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        guard let maybeMetricID = getOrderedMetricID(row: row) else {
+            return nil
+        }
+
+        let pasteboardItem = NSPasteboardItem()
+        pasteboardItem.setString(maybeMetricID, forType: metricPasteboardType)
+
+        return pasteboardItem
+    }
+
+    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
+        tableView.setDropRow(row, dropOperation: .above)
+
+        return .move
+    }
+
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+        guard let maybeMetricID = info.draggingPasteboard.string(forType: metricPasteboardType), let originalMetricIndex = configuration.orderedMetricIDs.firstIndex(of: maybeMetricID) else {
+            return false
+        }
+
+        var orderedMetricIDs = configuration.orderedMetricIDs
+        orderedMetricIDs.remove(at: originalMetricIndex)
+        let insertMetricIndex = originalMetricIndex < row ? max(0, row - 1) : row
+        orderedMetricIDs.insert(maybeMetricID, at: min(insertMetricIndex, orderedMetricIDs.count))
+        configuration = makeConfiguration(orderedMetricIDs: orderedMetricIDs)
+        tableView.reloadData()
+        onChange(configuration)
+
+        return true
+    }
+
+    private func getOrderedMetricID(row: Int) -> String? {
+        configuration.orderedMetricIDs.enumerated().first { metricOffset, _ in
+            metricOffset == row
+        }?.element
+    }
+
     private func makeConfiguration(
         pollingIntervalInSeconds: TimeInterval? = nil,
         enabledMetricIDs: Set<String>? = nil,
@@ -642,27 +692,6 @@ private final class SettingsView: NSView {
         }
 
         configuration = makeConfiguration(enabledMetricIDs: enabledMetricIDs)
-        rebuildSettingsView()
-        onChange(configuration)
-    }
-
-    @objc private func moveMetricUp(_ sender: NSButton) {
-        moveMetric(sender: sender, offset: -1)
-    }
-
-    @objc private func moveMetricDown(_ sender: NSButton) {
-        moveMetric(sender: sender, offset: 1)
-    }
-
-    private func moveMetric(sender: NSButton, offset: Int) {
-        guard let maybeMetricID = getMetricID(tag: sender.tag), let metricIndex = configuration.orderedMetricIDs.firstIndex(of: maybeMetricID) else {
-            return
-        }
-
-        let targetMetricIndex = configuration.orderedMetricIDs.index(metricIndex, offsetBy: offset)
-        var orderedMetricIDs = configuration.orderedMetricIDs
-        orderedMetricIDs.swapAt(metricIndex, targetMetricIndex)
-        configuration = makeConfiguration(orderedMetricIDs: orderedMetricIDs)
         rebuildSettingsView()
         onChange(configuration)
     }
