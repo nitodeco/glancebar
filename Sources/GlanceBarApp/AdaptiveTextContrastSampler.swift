@@ -39,10 +39,22 @@ final class AdaptiveTextContrastSampler {
             height: max(1, screenRect.height)
         ).integral
 
+        let isCaptureRectUsable = captureRect.minX.isFinite
+            && captureRect.minY.isFinite
+            && captureRect.width.isFinite
+            && captureRect.height.isFinite
+            && captureRect.width > 0
+            && captureRect.height > 0
+
+        guard isCaptureRectUsable, let windowID = CGWindowID(exactly: window.windowNumber) else {
+            cachedTextColor = nil
+            return nil
+        }
+
         guard let image = CGWindowListCreateImage(
             captureRect,
             .optionOnScreenBelowWindow,
-            CGWindowID(window.windowNumber),
+            windowID,
             [.boundsIgnoreFraming, .bestResolution]
         ) else {
             cachedTextColor = nil
