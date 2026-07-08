@@ -12,6 +12,7 @@ private let adaptiveContrastSampleGutterWidthInPoints: CGFloat = 18
 final class AdaptiveTextContrastSampler {
     private var lastSampleDate = Date.distantPast
     private var cachedTextColor: NSColor?
+    private var hasRequestedScreenCaptureAccess = false
 
     func reset() {
         lastSampleDate = .distantPast
@@ -26,6 +27,11 @@ final class AdaptiveTextContrastSampler {
         }
 
         lastSampleDate = now
+
+        guard CGPreflightScreenCaptureAccess() else {
+            cachedTextColor = nil
+            return nil
+        }
 
         guard let statusButton, let window = statusButton.window, let screen = window.screen else {
             cachedTextColor = nil
@@ -54,6 +60,34 @@ final class AdaptiveTextContrastSampler {
 
         cachedTextColor = getTextColor(images: samples)
         return cachedTextColor
+    }
+
+    func requestScreenCaptureAccessIfNeeded() -> Bool {
+        if CGPreflightScreenCaptureAccess() {
+            return true
+        }
+
+        guard !hasRequestedScreenCaptureAccess else {
+            return false
+        }
+
+        hasRequestedScreenCaptureAccess = true
+
+        let isAccessGranted = CGRequestScreenCaptureAccess()
+
+        if !isAccessGranted {
+            openScreenCaptureSettings()
+        }
+
+        return isAccessGranted
+    }
+
+    private func openScreenCaptureSettings() {
+        guard let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") else {
+            return
+        }
+
+        NSWorkspace.shared.open(settingsURL)
     }
 
     private func getSampleRects(statusItemRect: CGRect, screen: NSScreen) -> [CGRect] {

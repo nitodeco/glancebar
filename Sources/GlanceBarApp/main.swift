@@ -36,6 +36,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer?.invalidate()
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        updateAdaptiveTextContrastIfNeeded(force: true)
+    }
+
     @objc private func updateMetrics() {
         let snapshot = metricsReader.readSnapshot()
         maybeLatestSnapshot = MetricsSnapshot(
@@ -179,6 +183,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if previousIsAutoTextContrastEnabled != newConfiguration.isAutoTextContrastEnabled {
             adaptiveTextContrastSampler.reset()
+            if newConfiguration.isAutoTextContrastEnabled {
+                _ = adaptiveTextContrastSampler.requestScreenCaptureAccessIfNeeded()
+            }
             updateAdaptiveTextContrastIfNeeded(force: true)
         }
 
