@@ -1,7 +1,7 @@
 import AppKit
 
 private let settingsWindowWidth: CGFloat = 360
-private let settingsWindowHeight: CGFloat = 380
+private let settingsWindowHeight: CGFloat = 410
 private let settingsPadding: CGFloat = 16
 private let settingsRowSpacing: CGFloat = 10
 private let settingsSectionPadding: CGFloat = 14
@@ -51,6 +51,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private var configuration: AppConfiguration
     private let onChange: (AppConfiguration) -> Void
+    private let launchAtLoginButton = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let pollingValueLabel = NSTextField(labelWithString: "")
     private let gpuMultiplierValueLabel = NSTextField(labelWithString: "")
     private let yellowThresholdValueLabel = NSTextField(labelWithString: "")
@@ -102,6 +103,7 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
         ])
 
         tabView.addTabViewItem(makeTabViewItem(label: "Metrics", arrangedSubviews: [
+            makeCheckboxRow(label: "Launch at login", checkbox: launchAtLoginButton),
             makeNumberRow(label: "Polling", valueLabel: pollingValueLabel, stepper: pollingStepper),
             makeNumberRow(label: "GPU every", valueLabel: gpuMultiplierValueLabel, stepper: gpuMultiplierStepper),
             makeNumberRow(label: "Yellow above", valueLabel: yellowThresholdValueLabel, stepper: yellowThresholdStepper),
@@ -155,6 +157,8 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
     }
 
     private func configureControls() {
+        launchAtLoginButton.target = self
+        launchAtLoginButton.action = #selector(updateLaunchAtLogin)
         pollingStepper.target = self
         pollingStepper.action = #selector(updatePollingInterval)
         gpuMultiplierStepper.target = self
@@ -361,6 +365,8 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
     }
 
     private func syncControls() {
+        launchAtLoginButton.state = configuration.isLaunchAtLoginEnabled ? .on : .off
+
         pollingStepper.minValue = minimumPollingIntervalInSeconds
         pollingStepper.maxValue = maximumPollingIntervalInSeconds
         pollingStepper.increment = 1
@@ -568,6 +574,7 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
 
     private func makeConfiguration(
         pollingIntervalInSeconds: TimeInterval? = nil,
+        isLaunchAtLoginEnabled: Bool? = nil,
         enabledMetricIDs: Set<String>? = nil,
         orderedMetricIDs: [String]? = nil,
         gpuPollingMultiplier: Int? = nil,
@@ -584,6 +591,7 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
     ) -> AppConfiguration {
         AppConfiguration(
             pollingIntervalInSeconds: pollingIntervalInSeconds ?? configuration.pollingIntervalInSeconds,
+            isLaunchAtLoginEnabled: isLaunchAtLoginEnabled ?? configuration.isLaunchAtLoginEnabled,
             enabledMetricIDs: enabledMetricIDs ?? configuration.enabledMetricIDs,
             orderedMetricIDs: orderedMetricIDs ?? configuration.orderedMetricIDs,
             gpuPollingMultiplier: gpuPollingMultiplier ?? configuration.gpuPollingMultiplier,
@@ -602,6 +610,12 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
 
     @objc private func updatePollingInterval() {
         configuration = makeConfiguration(pollingIntervalInSeconds: pollingStepper.doubleValue)
+        syncControls()
+        onChange(configuration)
+    }
+
+    @objc private func updateLaunchAtLogin() {
+        configuration = makeConfiguration(isLaunchAtLoginEnabled: launchAtLoginButton.state == .on)
         syncControls()
         onChange(configuration)
     }

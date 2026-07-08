@@ -51,6 +51,7 @@ let downloadColorKey = "downloadColor"
 let baseTextColorKey = "baseTextColor"
 let labelTextColorKey = "labelTextColor"
 private let isAutoTextContrastEnabledKey = "isAutoTextContrastEnabled"
+private let isLaunchAtLoginEnabledKey = "isLaunchAtLoginEnabled"
 private let hueAdjustmentKeySuffix = "HueAdjustment"
 private let saturationAdjustmentKeySuffix = "SaturationAdjustment"
 private let lightnessAdjustmentKeySuffix = "LightnessAdjustment"
@@ -67,9 +68,11 @@ private let defaultDownloadColorID = "blue"
 private let defaultBaseTextColorID = "white"
 private let defaultLabelTextColorID = "white"
 private let defaultIsAutoTextContrastEnabled = false
+private let defaultIsLaunchAtLoginEnabled = true
 
 struct AppConfiguration {
     let pollingIntervalInSeconds: TimeInterval
+    let isLaunchAtLoginEnabled: Bool
     let isGpuEnabled: Bool
     let enabledMetricIDs: Set<String>
     let orderedMetricIDs: [String]
@@ -160,6 +163,7 @@ final class AppConfigurationStore {
 
         return AppConfiguration(
             pollingIntervalInSeconds: pollingIntervalInSeconds,
+            isLaunchAtLoginEnabled: userDefaults.object(forKey: isLaunchAtLoginEnabledKey) as? Bool ?? defaultConfiguration.isLaunchAtLoginEnabled,
             enabledMetricIDs: readEnabledMetricIDs(defaultConfiguration: defaultConfiguration),
             orderedMetricIDs: readOrderedMetricIDs(defaultConfiguration: defaultConfiguration),
             gpuPollingMultiplier: gpuPollingMultiplier,
@@ -178,6 +182,7 @@ final class AppConfigurationStore {
 
     func save(_ configuration: AppConfiguration) {
         userDefaults.set(configuration.pollingIntervalInSeconds, forKey: pollingIntervalKey)
+        userDefaults.set(configuration.isLaunchAtLoginEnabled, forKey: isLaunchAtLoginEnabledKey)
         userDefaults.set(configuration.isGpuEnabled, forKey: isGpuEnabledKey)
         userDefaults.set(Array(configuration.enabledMetricIDs), forKey: enabledMetricIDsKey)
         userDefaults.set(configuration.orderedMetricIDs, forKey: orderedMetricIDsKey)
@@ -291,6 +296,7 @@ final class AppConfigurationStore {
 func makeDefaultAppConfiguration() -> AppConfiguration {
     AppConfiguration(
         pollingIntervalInSeconds: defaultPollingIntervalInSeconds,
+        isLaunchAtLoginEnabled: defaultIsLaunchAtLoginEnabled,
         enabledMetricIDs: Set(defaultEnabledMetricIDs),
         orderedMetricIDs: defaultOrderedMetricIDs,
         gpuPollingMultiplier: defaultGpuPollingMultiplier,
@@ -322,6 +328,7 @@ func getTextColorPreset(id maybeColorID: String?) -> ColorPreset? {
 extension AppConfiguration {
     init(
         pollingIntervalInSeconds: TimeInterval,
+        isLaunchAtLoginEnabled: Bool,
         enabledMetricIDs: Set<String>,
         orderedMetricIDs: [String],
         gpuPollingMultiplier: Int,
@@ -337,6 +344,7 @@ extension AppConfiguration {
         colorAdjustments: [String: ColorAdjustment]
     ) {
         self.pollingIntervalInSeconds = pollingIntervalInSeconds
+        self.isLaunchAtLoginEnabled = isLaunchAtLoginEnabled
         self.enabledMetricIDs = normalizeEnabledMetricIDs(metricIDs: enabledMetricIDs)
         self.orderedMetricIDs = normalizeMetricOrder(metricIDs: orderedMetricIDs)
         isGpuEnabled = self.enabledMetricIDs.contains(gpuMetricID)

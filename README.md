@@ -12,6 +12,7 @@ GlanceBar is a lightweight native macOS menu bar app for glanceable resource usa
 - Configurable polling interval, GPU polling multiplier, warning threshold, and critical threshold.
 - Color presets plus advanced per-color HSL tuning.
 - Auto contrast that follows the current menu bar appearance.
+- Launch-at-login support.
 
 ## Requirements
 
@@ -66,6 +67,7 @@ swift test
 ## Settings
 
 - Metrics can be enabled, disabled, and reordered.
+- Launch at login can be enabled or disabled.
 - CPU, GPU, RAM, and SSD values can turn yellow above the warning threshold and red above the critical threshold.
 - GPU polling is optional and runs at a fixed multiple of the standard polling interval.
 - Network upload and download colors are configured separately from threshold colors.

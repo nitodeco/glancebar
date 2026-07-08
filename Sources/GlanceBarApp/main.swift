@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let metricsView = StatusMetricsView(frame: .zero)
     private let configurationStore: AppConfigurationStore
     private let adaptiveTextContrastSampler = AdaptiveTextContrastSampler()
+    private let launchAtLoginController = LaunchAtLoginController()
     private var configuration: AppConfiguration
     private var maybeLatestSnapshot: MetricsSnapshot?
     private var maybeGpuUsagePercent: Int?
@@ -28,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         metricsView.configuration = configuration
         configureStatusButton()
         statusItem.menu = makeMenu()
+        syncLaunchAtLogin()
         updateMetrics()
         scheduleTimer()
     }
@@ -150,6 +152,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return menu
     }
 
+    private func syncLaunchAtLogin() {
+        launchAtLoginController.apply(isEnabled: configuration.isLaunchAtLoginEnabled)
+    }
+
     @objc private func showSettings() {
         let settingsWindowController = settingsWindowController ?? SettingsWindowController(
             configuration: configuration,
@@ -171,6 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let previousIsGpuEnabled = configuration.isGpuEnabled
         let previousGpuPollingMultiplier = configuration.gpuPollingMultiplier
         let previousIsAutoTextContrastEnabled = configuration.isAutoTextContrastEnabled
+        let previousIsLaunchAtLoginEnabled = configuration.isLaunchAtLoginEnabled
         configuration = newConfiguration
         configurationStore.save(newConfiguration)
         metricsView.configuration = newConfiguration
@@ -184,6 +191,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if previousIsAutoTextContrastEnabled != newConfiguration.isAutoTextContrastEnabled {
             adaptiveTextContrastSampler.reset()
             updateAdaptiveTextContrastIfNeeded(force: true)
+        }
+
+        if previousIsLaunchAtLoginEnabled != newConfiguration.isLaunchAtLoginEnabled {
+            syncLaunchAtLogin()
         }
 
         syncMetricsViewSnapshot()
