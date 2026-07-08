@@ -22,7 +22,7 @@ GlanceBar is a lightweight native macOS menu bar app for glanceable resource usa
 
 Download `GlanceBar.app.zip` from the latest GitHub Release, unzip it, and move `GlanceBar.app` to Applications.
 
-On first launch, macOS may require opening it from Finder with Open because the release bundle is unsigned.
+On first launch, macOS may require opening it from Finder with Open unless the release has been Developer ID signed and notarized.
 
 ## Development
 
@@ -45,10 +45,16 @@ Create a release `.app` bundle:
 ./Scripts/build-app.sh
 ```
 
+Sign a release `.app` bundle:
+
+```sh
+GLANCEBAR_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./Scripts/sign-app.sh
+```
+
 Create a zipped app archive:
 
 ```sh
-./Scripts/package-app.sh
+GLANCEBAR_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./Scripts/package-app.sh
 ```
 
 Run tests:
@@ -79,7 +85,14 @@ swift test
 dist/GlanceBar.app.zip
 ```
 
-Pushing a tag like `v0.1.0` creates a GitHub Release and uploads `GlanceBar.app.zip`.
+Release archives are signed with hardened runtime before they are zipped. Pushing a tag like `v0.1.0` creates a GitHub Release and uploads `GlanceBar.app.zip`.
+
+GitHub release signing expects these repository secrets:
+
+- `APPLE_CODESIGN_CERTIFICATE_BASE64`: Base64-encoded `.p12` signing certificate.
+- `APPLE_CODESIGN_CERTIFICATE_PASSWORD`: Password for that `.p12`.
+
+Set the repository variable `GLANCEBAR_SIGNING_IDENTITY` if the certificate identity is not uniquely matched by `Developer ID Application`.
 
 ## Behavior
 
