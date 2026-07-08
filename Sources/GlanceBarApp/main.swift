@@ -183,9 +183,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if previousIsAutoTextContrastEnabled != newConfiguration.isAutoTextContrastEnabled {
             adaptiveTextContrastSampler.reset()
-            if newConfiguration.isAutoTextContrastEnabled {
-                _ = adaptiveTextContrastSampler.requestScreenCaptureAccessIfNeeded()
-            }
             updateAdaptiveTextContrastIfNeeded(force: true)
         }
 

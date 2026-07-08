@@ -7,12 +7,12 @@ private let adaptiveContrastDarkTextColor = NSColor(srgbRed: 0.03, green: 0.03, 
 private let adaptiveContrastLightTextColor = NSColor.white
 private let adaptiveContrastMaxColorByte = 255.0
 private let adaptiveContrastSampleGutterWidthInPoints: CGFloat = 18
+private let adaptiveContrastMinimumWallpaperCropSizeInPixels = 1.0
 
 @MainActor
 final class AdaptiveTextContrastSampler {
     private var lastSampleDate = Date.distantPast
     private var cachedTextColor: NSColor?
-    private var hasRequestedScreenCaptureAccess = false
 
     func reset() {
         lastSampleDate = .distantPast
@@ -28,14 +28,20 @@ final class AdaptiveTextContrastSampler {
 
         lastSampleDate = now
 
-        guard CGPreflightScreenCaptureAccess() else {
+        guard let statusButton, let window = statusButton.window, let screen = window.screen else {
             cachedTextColor = nil
             return nil
         }
 
-        guard let statusButton, let window = statusButton.window, let screen = window.screen else {
-            cachedTextColor = nil
-            return nil
+        if let appearanceTextColor = getAppearanceTextColor(statusButton: statusButton) {
+            cachedTextColor = appearanceTextColor
+            return cachedTextColor
+        }
+
+        let statusItemRect = window.convertToScreen(statusButton.bounds)
+        if let wallpaperTextColor = getWallpaperTextColor(statusItemRect: statusItemRect, screen: screen) {
+            cachedTextColor = wallpaperTextColor
+            return cachedTextColor
         }
 
         guard let displayIDNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
@@ -43,7 +49,11 @@ final class AdaptiveTextContrastSampler {
             return nil
         }
 
-        let statusItemRect = window.convertToScreen(statusButton.bounds)
+        guard CGPreflightScreenCaptureAccess() else {
+            cachedTextColor = nil
+            return nil
+        }
+
         let sampleRects = getSampleRects(statusItemRect: statusItemRect, screen: screen)
             .compactMap { sampleRect in
                 getDisplayPixelRect(sampleRect: sampleRect, screen: screen)
@@ -62,32 +72,18 @@ final class AdaptiveTextContrastSampler {
         return cachedTextColor
     }
 
-    func requestScreenCaptureAccessIfNeeded() -> Bool {
-        if CGPreflightScreenCaptureAccess() {
-            return true
+    private func getAppearanceTextColor(statusButton: NSStatusBarButton) -> NSColor? {
+        let appearanceName = statusButton.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])
+
+        if appearanceName == .darkAqua {
+            return adaptiveContrastLightTextColor
         }
 
-        guard !hasRequestedScreenCaptureAccess else {
-            return false
+        if appearanceName == .aqua {
+            return adaptiveContrastDarkTextColor
         }
 
-        hasRequestedScreenCaptureAccess = true
-
-        let isAccessGranted = CGRequestScreenCaptureAccess()
-
-        if !isAccessGranted {
-            openScreenCaptureSettings()
-        }
-
-        return isAccessGranted
-    }
-
-    private func openScreenCaptureSettings() {
-        guard let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") else {
-            return
-        }
-
-        NSWorkspace.shared.open(settingsURL)
+        return nil
     }
 
     private func getSampleRects(statusItemRect: CGRect, screen: NSScreen) -> [CGRect] {
@@ -142,6 +138,46 @@ final class AdaptiveTextContrastSampler {
         }
 
         return displayRect
+    }
+
+    private func getWallpaperTextColor(statusItemRect: CGRect, screen: NSScreen) -> NSColor? {
+        guard let wallpaperURL = NSWorkspace.shared.desktopImageURL(for: screen),
+              let wallpaperImage = NSImage(contentsOf: wallpaperURL),
+              let wallpaperCGImage = wallpaperImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else {
+            return nil
+        }
+
+        let wallpaperSize = CGSize(width: wallpaperCGImage.width, height: wallpaperCGImage.height)
+        let wallpaperScale = max(screen.frame.width / wallpaperSize.width, screen.frame.height / wallpaperSize.height)
+        let displayedWallpaperSize = CGSize(
+            width: wallpaperSize.width * wallpaperScale,
+            height: wallpaperSize.height * wallpaperScale
+        )
+        let hiddenWallpaperWidthInPixels = max(0, displayedWallpaperSize.width - screen.frame.width) / (2 * wallpaperScale)
+        let hiddenWallpaperHeightInPixels = max(0, displayedWallpaperSize.height - screen.frame.height) / (2 * wallpaperScale)
+        let statusItemRectFromTop = CGRect(
+            x: statusItemRect.minX - screen.frame.minX,
+            y: screen.frame.maxY - statusItemRect.maxY,
+            width: statusItemRect.width,
+            height: statusItemRect.height
+        )
+        let wallpaperCropRect = CGRect(
+            x: hiddenWallpaperWidthInPixels + statusItemRectFromTop.minX / wallpaperScale,
+            y: hiddenWallpaperHeightInPixels + statusItemRectFromTop.minY / wallpaperScale,
+            width: statusItemRectFromTop.width / wallpaperScale,
+            height: statusItemRectFromTop.height / wallpaperScale
+        ).integral
+        let usableWallpaperRect = wallpaperCropRect.intersection(CGRect(origin: .zero, size: wallpaperSize))
+
+        guard usableWallpaperRect.width >= adaptiveContrastMinimumWallpaperCropSizeInPixels,
+              usableWallpaperRect.height >= adaptiveContrastMinimumWallpaperCropSizeInPixels,
+              let wallpaperCrop = wallpaperCGImage.cropping(to: usableWallpaperRect)
+        else {
+            return nil
+        }
+
+        return getTextColor(images: [wallpaperCrop])
     }
 
     private func getTextColor(images: [CGImage]) -> NSColor? {
