@@ -20,14 +20,18 @@ GlanceBar is a lightweight native macOS menu bar app for glanceable resource usa
 
 ## Quick Start
 
+Download `GlanceBar.app.zip` from the latest GitHub Release, unzip it, and move `GlanceBar.app` to Applications.
+
+On first launch, macOS may require opening it from Finder with Open because the release bundle is unsigned.
+
+## Development
+
 ```sh
 ./Scripts/build-app.sh
 open .build/release/GlanceBar.app
 ```
 
 Click the menu bar item to open the menu. Choose Settings to configure metrics, colors, thresholds, and polling.
-
-## Development
 
 Build the executable:
 
@@ -39,6 +43,12 @@ Create a release `.app` bundle:
 
 ```sh
 ./Scripts/build-app.sh
+```
+
+Create a zipped app archive:
+
+```sh
+./Scripts/package-app.sh
 ```
 
 Run tests:
@@ -62,6 +72,14 @@ swift test
 ```text
 .build/release/GlanceBar.app
 ```
+
+`./Scripts/package-app.sh` writes the release archive to:
+
+```text
+dist/GlanceBar.app.zip
+```
+
+Pushing a tag like `v0.1.0` creates a GitHub Release and uploads `GlanceBar.app.zip`.
 
 ## Behavior
 
