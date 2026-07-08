@@ -2,6 +2,8 @@
 
 GlanceBar is a lightweight native macOS menu bar app for glanceable resource usage. It keeps CPU, GPU, memory, storage, and network activity visible without charts, popovers, notifications, or a web runtime.
 
+![GlanceBar menu bar stats](docs/glancebar-stats.png)
+
 ## Features
 
 - CPU, optional GPU, RAM, and SSD usage as compact percentages.
