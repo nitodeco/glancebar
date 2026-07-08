@@ -38,6 +38,12 @@ final class StatusMetricsView: NSView {
         }
     }
 
+    var adaptiveTextColor: NSColor? {
+        didSet {
+            needsDisplay = true
+        }
+    }
+
     override var intrinsicContentSize: NSSize {
         Self.preferredSize(configuration: configuration)
     }
@@ -107,7 +113,7 @@ final class StatusMetricsView: NSView {
     private func drawColumn(label: String, value: String, percent: Int, x: CGFloat) {
         let labelAttributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedSystemFont(ofSize: labelFontSize, weight: .regular),
-            .foregroundColor: configuration.labelTextColor
+            .foregroundColor: adaptiveTextColor ?? configuration.labelTextColor
         ]
         let valueAttributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: valueFontSize, weight: .medium),
@@ -176,6 +182,6 @@ final class StatusMetricsView: NSView {
             return configuration.yellowColor
         }
 
-        return configuration.baseTextColor
+        return adaptiveTextColor ?? configuration.baseTextColor
     }
 }

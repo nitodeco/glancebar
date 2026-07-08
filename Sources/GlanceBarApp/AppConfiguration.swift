@@ -50,6 +50,7 @@ let uploadColorKey = "uploadColor"
 let downloadColorKey = "downloadColor"
 let baseTextColorKey = "baseTextColor"
 let labelTextColorKey = "labelTextColor"
+private let isAutoTextContrastEnabledKey = "isAutoTextContrastEnabled"
 private let hueAdjustmentKeySuffix = "HueAdjustment"
 private let saturationAdjustmentKeySuffix = "SaturationAdjustment"
 private let lightnessAdjustmentKeySuffix = "LightnessAdjustment"
@@ -65,6 +66,7 @@ private let defaultUploadColorID = "purple"
 private let defaultDownloadColorID = "blue"
 private let defaultBaseTextColorID = "white"
 private let defaultLabelTextColorID = "white"
+private let defaultIsAutoTextContrastEnabled = false
 
 struct AppConfiguration {
     let pollingIntervalInSeconds: TimeInterval
@@ -80,6 +82,7 @@ struct AppConfiguration {
     let downloadColorID: String
     let baseTextColorID: String
     let labelTextColorID: String
+    let isAutoTextContrastEnabled: Bool
     let colorAdjustments: [String: ColorAdjustment]
     let yellowColor: NSColor
     let warningColor: NSColor
@@ -168,6 +171,7 @@ final class AppConfigurationStore {
             downloadColorID: readColorID(forKey: downloadColorKey, fallback: defaultConfiguration.downloadColorID),
             baseTextColorID: readTextColorID(forKey: baseTextColorKey, fallback: defaultConfiguration.baseTextColorID),
             labelTextColorID: readTextColorID(forKey: labelTextColorKey, fallback: defaultConfiguration.labelTextColorID),
+            isAutoTextContrastEnabled: userDefaults.object(forKey: isAutoTextContrastEnabledKey) as? Bool ?? defaultConfiguration.isAutoTextContrastEnabled,
             colorAdjustments: readColorAdjustments()
         )
     }
@@ -186,6 +190,7 @@ final class AppConfigurationStore {
         userDefaults.set(configuration.downloadColorID, forKey: downloadColorKey)
         userDefaults.set(configuration.baseTextColorID, forKey: baseTextColorKey)
         userDefaults.set(configuration.labelTextColorID, forKey: labelTextColorKey)
+        userDefaults.set(configuration.isAutoTextContrastEnabled, forKey: isAutoTextContrastEnabledKey)
         for colorRole in colorRoles {
             let colorAdjustment = getColorAdjustment(colorAdjustments: configuration.colorAdjustments, roleID: colorRole.id)
             userDefaults.set(colorAdjustment.huePercent, forKey: colorRole.id + hueAdjustmentKeySuffix)
@@ -297,6 +302,7 @@ func makeDefaultAppConfiguration() -> AppConfiguration {
         downloadColorID: defaultDownloadColorID,
         baseTextColorID: defaultBaseTextColorID,
         labelTextColorID: defaultLabelTextColorID,
+        isAutoTextContrastEnabled: defaultIsAutoTextContrastEnabled,
         colorAdjustments: [:]
     )
 }
@@ -327,6 +333,7 @@ extension AppConfiguration {
         downloadColorID: String,
         baseTextColorID: String,
         labelTextColorID: String,
+        isAutoTextContrastEnabled: Bool,
         colorAdjustments: [String: ColorAdjustment]
     ) {
         self.pollingIntervalInSeconds = pollingIntervalInSeconds
@@ -352,6 +359,7 @@ extension AppConfiguration {
         self.downloadColorID = downloadColorID
         self.baseTextColorID = baseTextColorID
         self.labelTextColorID = labelTextColorID
+        self.isAutoTextContrastEnabled = isAutoTextContrastEnabled
         self.colorAdjustments = colorRoles.reduce(into: [String: ColorAdjustment]()) { colorAdjustmentsByRole, colorRole in
             let colorAdjustment = getColorAdjustment(colorAdjustments: colorAdjustments, roleID: colorRole.id)
             colorAdjustmentsByRole[colorRole.id] = ColorAdjustment(

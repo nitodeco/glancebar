@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let metricsReader = SystemMetricsReader()
     private let metricsView = StatusMetricsView(frame: .zero)
     private let configurationStore: AppConfigurationStore
+    private let adaptiveTextContrastSampler = AdaptiveTextContrastSampler()
     private var configuration: AppConfiguration
     private var maybeLatestSnapshot: MetricsSnapshot?
     private var maybeGpuUsagePercent: Int?
@@ -46,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             networkDownloadBytesPerSecond: snapshot.networkDownloadBytesPerSecond
         )
         updateGpuMetricsIfNeeded()
+        updateAdaptiveTextContrastIfNeeded()
         syncMetricsViewSnapshot()
     }
 
@@ -118,6 +120,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let preferredSize = StatusMetricsView.preferredSize(configuration: configuration)
         statusItem.length = preferredSize.width
         metricsView.frame = NSRect(origin: .zero, size: preferredSize)
+        adaptiveTextContrastSampler.reset()
+    }
+
+    private func updateAdaptiveTextContrastIfNeeded(force: Bool = false) {
+        guard configuration.isAutoTextContrastEnabled else {
+            metricsView.adaptiveTextColor = nil
+            return
+        }
+
+        metricsView.adaptiveTextColor = adaptiveTextContrastSampler.sampleTextColor(
+            statusButton: statusItem.button,
+            force: force
+        )
     }
 
     private func makeMenu() -> NSMenu {
@@ -151,6 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let previousPollingIntervalInSeconds = configuration.pollingIntervalInSeconds
         let previousIsGpuEnabled = configuration.isGpuEnabled
         let previousGpuPollingMultiplier = configuration.gpuPollingMultiplier
+        let previousIsAutoTextContrastEnabled = configuration.isAutoTextContrastEnabled
         configuration = newConfiguration
         configurationStore.save(newConfiguration)
         metricsView.configuration = newConfiguration
@@ -159,6 +175,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if previousIsGpuEnabled != newConfiguration.isGpuEnabled || previousGpuPollingMultiplier != newConfiguration.gpuPollingMultiplier {
             maybeGpuUsagePercent = nil
             gpuPollingTickCount = 0
+        }
+
+        if previousIsAutoTextContrastEnabled != newConfiguration.isAutoTextContrastEnabled {
+            adaptiveTextContrastSampler.reset()
+            updateAdaptiveTextContrastIfNeeded(force: true)
         }
 
         syncMetricsViewSnapshot()

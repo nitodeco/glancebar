@@ -65,6 +65,7 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
     private let downloadColorMenu = NSPopUpButton()
     private let baseTextColorMenu = NSPopUpButton()
     private let labelTextColorMenu = NSPopUpButton()
+    private let autoTextContrastButton = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let advancedColorRoleMenu = NSPopUpButton()
     private let advancedHueSlider = NSSlider()
     private let advancedSaturationSlider = NSSlider()
@@ -113,7 +114,8 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
             makeColorRow(label: "Upload", colorMenu: uploadColorMenu),
             makeColorRow(label: "Download", colorMenu: downloadColorMenu),
             makeColorRow(label: "Base text", colorMenu: baseTextColorMenu),
-            makeColorRow(label: "Label text", colorMenu: labelTextColorMenu)
+            makeColorRow(label: "Label text", colorMenu: labelTextColorMenu),
+            makeCheckboxRow(label: "Auto contrast", checkbox: autoTextContrastButton)
         ]))
         tabView.addTabViewItem(makeTabViewItem(label: "Advanced", arrangedSubviews: [
             makeAdvancedRoleRow(),
@@ -167,6 +169,8 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
         configureColorMenu(downloadColorMenu, presets: colorPresets, action: #selector(updateDownloadColor))
         configureColorMenu(baseTextColorMenu, presets: textColorPresets, action: #selector(updateBaseTextColor))
         configureColorMenu(labelTextColorMenu, presets: textColorPresets, action: #selector(updateLabelTextColor))
+        autoTextContrastButton.target = self
+        autoTextContrastButton.action = #selector(updateAutoTextContrast)
         configureAdvancedControls()
     }
 
@@ -389,6 +393,7 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
         selectColorPreset(id: configuration.downloadColorID, in: downloadColorMenu)
         selectTextColorPreset(id: configuration.baseTextColorID, in: baseTextColorMenu)
         selectTextColorPreset(id: configuration.labelTextColorID, in: labelTextColorMenu)
+        autoTextContrastButton.state = configuration.isAutoTextContrastEnabled ? .on : .off
         syncAdvancedControls()
     }
 
@@ -574,6 +579,7 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
         downloadColorID: String? = nil,
         baseTextColorID: String? = nil,
         labelTextColorID: String? = nil,
+        isAutoTextContrastEnabled: Bool? = nil,
         colorAdjustments: [String: ColorAdjustment]? = nil
     ) -> AppConfiguration {
         AppConfiguration(
@@ -589,6 +595,7 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
             downloadColorID: downloadColorID ?? configuration.downloadColorID,
             baseTextColorID: baseTextColorID ?? configuration.baseTextColorID,
             labelTextColorID: labelTextColorID ?? configuration.labelTextColorID,
+            isAutoTextContrastEnabled: isAutoTextContrastEnabled ?? configuration.isAutoTextContrastEnabled,
             colorAdjustments: colorAdjustments ?? configuration.colorAdjustments
         )
     }
@@ -649,6 +656,12 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
 
     @objc private func updateLabelTextColor() {
         configuration = makeConfiguration(labelTextColorID: selectedTextColorID(in: labelTextColorMenu, fallback: configuration.labelTextColorID))
+        syncControls()
+        onChange(configuration)
+    }
+
+    @objc private func updateAutoTextContrast() {
+        configuration = makeConfiguration(isAutoTextContrastEnabled: autoTextContrastButton.state == .on)
         syncControls()
         onChange(configuration)
     }
