@@ -28,6 +28,10 @@ let package = Package(
         .testTarget(
             name: "GlanceBarCoreTests",
             dependencies: ["GlanceBarCore"]
+        ),
+        .testTarget(
+            name: "GlanceBarAppTests",
+            dependencies: ["GlanceBarApp"]
         )
     ]
 )

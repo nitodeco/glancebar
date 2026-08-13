@@ -511,6 +511,10 @@ private func getWrappedHue(_ hue: CGFloat) -> CGFloat {
 }
 
 private func clamp(value: TimeInterval, fallback: TimeInterval, minValue: TimeInterval, maxValue: TimeInterval) -> TimeInterval {
+    guard value.isFinite else {
+        return fallback
+    }
+
     if value < minValue {
         return fallback
     }
