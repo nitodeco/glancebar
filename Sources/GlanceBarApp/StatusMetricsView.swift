@@ -112,12 +112,12 @@ final class StatusMetricsView: NSView {
 
     private func drawColumn(label: String, value: String, percent: Int, x: CGFloat) {
         let labelAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: labelFontSize, weight: .regular),
-            .foregroundColor: adaptiveTextColor ?? configuration.labelTextColor
+            .font: getLabelFont(),
+            .foregroundColor: getDrawableColor(adaptiveTextColor ?? configuration.labelTextColor)
         ]
         let valueAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: valueFontSize, weight: .medium),
-            .foregroundColor: getValueColor(percent: percent)
+            .font: getValueFont(),
+            .foregroundColor: getDrawableColor(getValueColor(percent: percent))
         ]
 
         label.draw(at: NSPoint(x: x, y: labelY), withAttributes: labelAttributes)
@@ -128,11 +128,11 @@ final class StatusMetricsView: NSView {
         let valueParagraphStyle = NSMutableParagraphStyle()
         valueParagraphStyle.alignment = .right
         let valueAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: networkFontSize, weight: .medium),
+            .font: getNetworkFont(),
             .paragraphStyle: valueParagraphStyle
         ]
         let unitAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: networkFontSize, weight: .medium)
+            .font: getNetworkFont()
         ]
         let upload = ByteFormatter.formatThroughputParts(bytesPerSecond: snapshot.networkUploadBytesPerSecond)
         let download = ByteFormatter.formatThroughputParts(bytesPerSecond: snapshot.networkDownloadBytesPerSecond)
@@ -165,11 +165,11 @@ final class StatusMetricsView: NSView {
     ) {
         throughputFormat.value.draw(
             in: NSRect(x: x, y: y, width: networkValueWidth, height: networkFontSize + 2),
-            withAttributes: valueAttributes.merging([.foregroundColor: color]) { firstValue, _ in firstValue }
+            withAttributes: valueAttributes.merging([.foregroundColor: getDrawableColor(color)]) { firstValue, _ in firstValue }
         )
         throughputFormat.unit.draw(
             at: NSPoint(x: x + networkUnitXOffset, y: y),
-            withAttributes: unitAttributes.merging([.foregroundColor: color]) { firstValue, _ in firstValue }
+            withAttributes: unitAttributes.merging([.foregroundColor: getDrawableColor(color)]) { firstValue, _ in firstValue }
         )
     }
 
@@ -183,5 +183,21 @@ final class StatusMetricsView: NSView {
         }
 
         return adaptiveTextColor ?? configuration.baseTextColor
+    }
+
+    private func getDrawableColor(_ color: NSColor) -> NSColor {
+        color.usingColorSpace(.sRGB) ?? color.usingColorSpace(.deviceRGB) ?? .labelColor
+    }
+
+    private func getLabelFont() -> NSFont {
+        NSFont(name: "Menlo", size: labelFontSize) ?? NSFont.systemFont(ofSize: labelFontSize, weight: .regular)
+    }
+
+    private func getValueFont() -> NSFont {
+        NSFont(name: "Menlo", size: valueFontSize) ?? NSFont.monospacedDigitSystemFont(ofSize: valueFontSize, weight: .medium)
+    }
+
+    private func getNetworkFont() -> NSFont {
+        NSFont(name: "Menlo", size: networkFontSize) ?? NSFont.monospacedDigitSystemFont(ofSize: networkFontSize, weight: .medium)
     }
 }
