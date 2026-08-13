@@ -1,6 +1,6 @@
 import Foundation
 
-public struct MetricsSnapshot: Equatable {
+public struct MetricsSnapshot: Equatable, Sendable {
     public let cpuUsagePercent: Int
     public let gpuUsagePercent: Int?
     public let ramUsagePercent: Int

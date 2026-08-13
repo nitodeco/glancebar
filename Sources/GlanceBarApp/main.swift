@@ -6,7 +6,7 @@ private let metricsTimerToleranceInSeconds: TimeInterval = 0.5
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let metricsReader = SystemMetricsReader()
+    private let metricsPollingWorker = MetricsPollingWorker()
     private let metricsView = StatusMetricsView(frame: .zero)
     private let configurationStore: AppConfigurationStore
     private let adaptiveTextContrastSampler = AdaptiveTextContrastSampler()
@@ -15,7 +15,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var maybeLatestSnapshot: MetricsSnapshot?
     private var maybeGpuUsagePercent: Int?
     private var gpuPollingTickCount = 0
+    private var isMetricsUpdateInProgress = false
     private var timer: Timer?
+    private var metricsUpdateTask: Task<Void, Never>?
     private var settingsWindowController: SettingsWindowController?
 
     override init() {
@@ -36,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
+        metricsUpdateTask?.cancel()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -43,16 +46,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func updateMetrics() {
-        let snapshot = metricsReader.readSnapshot()
-        maybeLatestSnapshot = MetricsSnapshot(
-            cpuUsagePercent: snapshot.cpuUsagePercent,
-            gpuUsagePercent: configuration.isGpuEnabled ? maybeGpuUsagePercent : nil,
-            ramUsagePercent: snapshot.ramUsagePercent,
-            ssdUsagePercent: snapshot.ssdUsagePercent,
-            networkUploadBytesPerSecond: snapshot.networkUploadBytesPerSecond,
-            networkDownloadBytesPerSecond: snapshot.networkDownloadBytesPerSecond
-        )
-        updateGpuMetricsIfNeeded()
+        guard !isMetricsUpdateInProgress else {
+            return
+        }
+
+        let isGpuReadRequired = getIsGpuReadRequired()
+        isMetricsUpdateInProgress = true
+        metricsUpdateTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            defer {
+                isMetricsUpdateInProgress = false
+                metricsUpdateTask = nil
+            }
+
+            let metricsPollResult = await metricsPollingWorker.readMetrics(isGpuReadRequired: isGpuReadRequired)
+
+            guard !Task.isCancelled else {
+                return
+            }
+
+            apply(metricsPollResult: metricsPollResult)
+        }
+    }
+
+    private func apply(metricsPollResult: MetricsPollResult) {
+        maybeLatestSnapshot = metricsPollResult.snapshot
+
+        if let gpuUsagePercent = metricsPollResult.maybeGpuUsagePercent {
+            maybeGpuUsagePercent = gpuUsagePercent
+        }
+
         updateAdaptiveTextContrastIfNeeded()
         syncMetricsViewSnapshot()
     }
@@ -84,25 +110,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer?.tolerance = metricsTimerToleranceInSeconds
     }
 
-    private func updateGpuMetricsIfNeeded() {
+    private func getIsGpuReadRequired() -> Bool {
         guard configuration.isGpuEnabled else {
             maybeGpuUsagePercent = nil
             gpuPollingTickCount = 0
-            return
+            return false
         }
 
         guard isStatusItemVisibleForGpuPolling() else {
-            return
+            return false
         }
 
         gpuPollingTickCount += 1
 
         guard gpuPollingTickCount >= configuration.gpuPollingMultiplier else {
-            return
+            return false
         }
 
         gpuPollingTickCount = 0
-        maybeGpuUsagePercent = metricsReader.readGpuUsagePercent()
+
+        return true
     }
 
     private func isStatusItemVisibleForGpuPolling() -> Bool {
