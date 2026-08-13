@@ -11,6 +11,9 @@ permissions:
 jobs:
   release:
     runs-on: macos-latest
+    env:
+      APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
 
     steps:
       - name: Checkout
@@ -24,8 +27,21 @@ jobs:
 
       - name: Build app archive
         env:
-          GLANCEBAR_SIGNING_IDENTITY: ${{ vars.GLANCEBAR_SIGNING_IDENTITY || 'Developer ID Application' }}
+          GLANCEBAR_SIGNING_IDENTITY: ${{ vars.GLANCEBAR_SIGNING_IDENTITY }}
         run: ./Scripts/package-app.sh
+
+      - name: Notarize app archive
+        env:
+          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+        run: |
+          notary_key_path="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$notary_key_path"
+          chmod 600 "$notary_key_path"
+          APPLE_NOTARY_KEY_PATH="$notary_key_path" ./Scripts/notarize-app.sh
+
+      - name: Remove notarization key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
 
       - name: Upload release
         uses: softprops/action-gh-release@v2
