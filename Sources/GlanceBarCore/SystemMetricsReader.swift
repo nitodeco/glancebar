@@ -15,8 +15,13 @@ public final class SystemMetricsReader {
     private var maybePreviousCpuTicks: [UInt32]?
     private var maybePreviousNetworkCounters: NetworkCounters?
     private var maybePreviousNetworkDate: Date?
+    private var cachedCpuUsagePercent = 0
+    private var cachedGpuUsagePercent = 0
+    private var cachedRamUsagePercent = 0
     private var cachedSsdUsagePercent: Int = 0
+    private var cachedNetworkThroughput = NetworkThroughput(uploadBytesPerSecond: 0, downloadBytesPerSecond: 0)
     private var lastSsdUpdateDate: Date = .distantPast
+    private var failedMetricProbeIDs: Set<MetricProbeID> = []
     private let ssdUpdateIntervalInSeconds: TimeInterval
     private let probe: SystemMetricsProbe
 
@@ -31,29 +36,58 @@ public final class SystemMetricsReader {
     }
 
     public func readSnapshot(date: Date = Date()) -> MetricsSnapshot {
-        let cpuUsagePercent = readCpuUsagePercent()
-        let ramUsagePercent = probe.readRamUsagePercent()
-        let networkThroughput = readNetworkThroughput(date: date)
+        if let cpuUsagePercent = readCpuUsagePercent() {
+            cachedCpuUsagePercent = cpuUsagePercent
+            recordProbeRecovery(metricProbeID: .cpu)
+        } else {
+            recordProbeFailure(metricProbeID: .cpu)
+        }
+
+        if let ramUsagePercent = probe.readRamUsagePercent() {
+            cachedRamUsagePercent = ramUsagePercent
+            recordProbeRecovery(metricProbeID: .ram)
+        } else {
+            recordProbeFailure(metricProbeID: .ram)
+        }
+
+        if let networkThroughput = readNetworkThroughput(date: date) {
+            cachedNetworkThroughput = networkThroughput
+            recordProbeRecovery(metricProbeID: .network)
+        } else {
+            recordProbeFailure(metricProbeID: .network)
+        }
 
         if date.timeIntervalSince(lastSsdUpdateDate) >= ssdUpdateIntervalInSeconds {
-            cachedSsdUsagePercent = probe.readSsdUsagePercent()
-            lastSsdUpdateDate = date
+            if let ssdUsagePercent = probe.readSsdUsagePercent() {
+                cachedSsdUsagePercent = ssdUsagePercent
+                lastSsdUpdateDate = date
+                recordProbeRecovery(metricProbeID: .ssd)
+            } else {
+                recordProbeFailure(metricProbeID: .ssd)
+            }
         }
 
         return MetricsSnapshot(
-            cpuUsagePercent: cpuUsagePercent,
-            ramUsagePercent: ramUsagePercent,
+            cpuUsagePercent: cachedCpuUsagePercent,
+            ramUsagePercent: cachedRamUsagePercent,
             ssdUsagePercent: cachedSsdUsagePercent,
-            networkUploadBytesPerSecond: networkThroughput.uploadBytesPerSecond,
-            networkDownloadBytesPerSecond: networkThroughput.downloadBytesPerSecond
+            networkUploadBytesPerSecond: cachedNetworkThroughput.uploadBytesPerSecond,
+            networkDownloadBytesPerSecond: cachedNetworkThroughput.downloadBytesPerSecond
         )
     }
 
     public func readGpuUsagePercent() -> Int {
-        probe.readGpuUsagePercent() ?? 0
+        if let gpuUsagePercent = probe.readGpuUsagePercent() {
+            cachedGpuUsagePercent = gpuUsagePercent
+            recordProbeRecovery(metricProbeID: .gpu)
+        } else {
+            recordProbeFailure(metricProbeID: .gpu)
+        }
+
+        return cachedGpuUsagePercent
     }
 
-    private func readCpuUsagePercent() -> Int {
+    private func readCpuUsagePercent() -> Int? {
         var cpuInfo: processor_info_array_t?
         var processorCount: mach_msg_type_number_t = 0
         var cpuInfoCount: mach_msg_type_number_t = 0
@@ -67,7 +101,7 @@ public final class SystemMetricsReader {
         )
 
         guard result == KERN_SUCCESS, let cpuInfo else {
-            return 0
+            return nil
         }
 
         let vmSize = vm_size_t(cpuInfoCount) * vm_size_t(MemoryLayout<integer_t>.stride)
@@ -83,7 +117,7 @@ public final class SystemMetricsReader {
             processorCount: Int(processorCount),
             cpuLoadInfoCount: cpuLoadInfoCount
         ) else {
-            return 0
+            return nil
         }
 
         let ticks = (0..<tickCount).map { tickOffset in
@@ -126,7 +160,7 @@ public final class SystemMetricsReader {
         }
 
         guard processorUsages.count == Int(processorCount) else {
-            return 0
+            return nil
         }
 
         let totalActiveTicks = processorUsages.reduce(UInt64(0)) { acc, usage in
@@ -145,8 +179,10 @@ public final class SystemMetricsReader {
         return clampPercent(Int((usage * 100).rounded()))
     }
 
-    private func readNetworkThroughput(date: Date) -> NetworkThroughput {
-        let counters = probe.readNetworkCounters()
+    private func readNetworkThroughput(date: Date) -> NetworkThroughput? {
+        guard let counters = probe.readNetworkCounters() else {
+            return nil
+        }
         defer {
             maybePreviousNetworkCounters = counters
             maybePreviousNetworkDate = date
@@ -169,17 +205,33 @@ public final class SystemMetricsReader {
         let downloadDeltaBytes = counters.downloadBytes >= previousNetworkCounters.downloadBytes ? counters.downloadBytes - previousNetworkCounters.downloadBytes : 0
 
         return NetworkThroughput(
-            uploadBytesPerSecond: UInt64(Double(uploadDeltaBytes) / intervalInSeconds),
-            downloadBytesPerSecond: UInt64(Double(downloadDeltaBytes) / intervalInSeconds)
+            uploadBytesPerSecond: getBytesPerSecond(deltaBytes: uploadDeltaBytes, intervalInSeconds: intervalInSeconds),
+            downloadBytesPerSecond: getBytesPerSecond(deltaBytes: downloadDeltaBytes, intervalInSeconds: intervalInSeconds)
         )
+    }
+
+    private func recordProbeFailure(metricProbeID: MetricProbeID) {
+        guard failedMetricProbeIDs.insert(metricProbeID).inserted else {
+            return
+        }
+
+        NSLog("Metric probe failed: %@", metricProbeID.rawValue)
+    }
+
+    private func recordProbeRecovery(metricProbeID: MetricProbeID) {
+        guard failedMetricProbeIDs.remove(metricProbeID) != nil else {
+            return
+        }
+
+        NSLog("Metric probe recovered: %@", metricProbeID.rawValue)
     }
 }
 
 struct SystemMetricsProbe {
-    let readRamUsagePercent: () -> Int
-    let readSsdUsagePercent: () -> Int
+    let readRamUsagePercent: () -> Int?
+    let readSsdUsagePercent: () -> Int?
     let readGpuUsagePercent: () -> Int?
-    let readNetworkCounters: () -> NetworkCounters
+    let readNetworkCounters: () -> NetworkCounters?
 }
 
 struct NetworkCounters {
@@ -197,6 +249,14 @@ private struct CpuUsage {
     let totalTicks: UInt64
 }
 
+private enum MetricProbeID: String {
+    case cpu
+    case gpu
+    case network
+    case ram
+    case ssd
+}
+
 private func clampPercent(_ percent: Int) -> Int {
     min(max(percent, 0), 100)
 }
@@ -211,13 +271,31 @@ func getTickDelta(from previousTick: UInt32, to tick: UInt32) -> UInt64 {
     UInt64(tick &- previousTick)
 }
 
+func getBytesPerSecond(deltaBytes: UInt64, intervalInSeconds: TimeInterval) -> UInt64 {
+    guard intervalInSeconds.isFinite, intervalInSeconds > 0 else {
+        return 0
+    }
+
+    let bytesPerSecond = Double(deltaBytes) / intervalInSeconds
+
+    guard bytesPerSecond.isFinite else {
+        return UInt64.max
+    }
+
+    if bytesPerSecond >= Double(UInt64.max) {
+        return UInt64.max
+    }
+
+    return UInt64(bytesPerSecond)
+}
+
 private func getCpuTick(ticks: [UInt32], index: Int) -> UInt32? {
     ticks.enumerated().first { tickIndex, _ in
         tickIndex == index
     }?.element
 }
 
-private func readLiveRamUsagePercent() -> Int {
+private func readLiveRamUsagePercent() -> Int? {
     var stats = vm_statistics64()
     var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.stride / MemoryLayout<integer_t>.stride)
     let result = withUnsafeMutablePointer(to: &stats) { statsPointer in
@@ -227,7 +305,7 @@ private func readLiveRamUsagePercent() -> Int {
     }
 
     guard result == KERN_SUCCESS else {
-        return 0
+        return nil
     }
 
     let activePages = UInt64(stats.active_count)
@@ -240,13 +318,13 @@ private func readLiveRamUsagePercent() -> Int {
     let totalPages = usedPages + inactivePages + freePages + speculativePages
 
     guard totalPages > 0 else {
-        return 0
+        return nil
     }
 
     return clampPercent(Int((Double(usedPages) / Double(totalPages) * 100).rounded()))
 }
 
-private func readLiveSsdUsagePercent() -> Int {
+private func readLiveSsdUsagePercent() -> Int? {
     do {
         let attributes = try FileManager.default.attributesOfFileSystem(forPath: dataVolumePath)
         let maybeFreeBytes = attributes[.systemFreeSize] as? NSNumber
@@ -255,12 +333,12 @@ private func readLiveSsdUsagePercent() -> Int {
         let totalBytes = maybeTotalBytes?.uint64Value ?? 0
 
         guard totalBytes > 0, totalBytes >= freeBytes else {
-            return 0
+            return nil
         }
 
         return clampPercent(Int((Double(totalBytes - freeBytes) / Double(totalBytes) * 100).rounded()))
     } catch {
-        return 0
+        return nil
     }
 }
 
@@ -311,14 +389,14 @@ private func readGpuUtilizationPercent(service: io_object_t) -> Int? {
     return clampPercent(maybeUtilizationPercent.intValue)
 }
 
-private func readLiveNetworkCounters() -> NetworkCounters {
+private func readLiveNetworkCounters() -> NetworkCounters? {
     var maybeInterfaces: UnsafeMutablePointer<ifaddrs>?
     var uploadBytes: UInt64 = 0
     var downloadBytes: UInt64 = 0
     let activeInterfaceNames = getActiveNetworkInterfaceNames()
 
     guard getifaddrs(&maybeInterfaces) == 0, let interfaces = maybeInterfaces else {
-        return NetworkCounters(uploadBytes: 0, downloadBytes: 0)
+        return nil
     }
 
     defer {
