@@ -44,7 +44,9 @@ final class AdaptiveTextContrastSampler {
             return cachedTextColor
         }
 
-        guard let displayIDNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+        guard let displayIDNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+              let displayID = UInt32(exactly: displayIDNumber.int64Value)
+        else {
             cachedTextColor = nil
             return nil
         }
@@ -65,7 +67,7 @@ final class AdaptiveTextContrastSampler {
         }
 
         let samples = sampleRects.compactMap { sampleRect in
-            CGDisplayCreateImage(CGDirectDisplayID(displayIDNumber.uint32Value), rect: sampleRect)
+            CGDisplayCreateImage(CGDirectDisplayID(displayID), rect: sampleRect)
         }
 
         cachedTextColor = getTextColor(images: samples)
@@ -169,8 +171,13 @@ final class AdaptiveTextContrastSampler {
             height: statusItemRectFromTop.height / wallpaperScale
         ).integral
         let usableWallpaperRect = wallpaperCropRect.intersection(CGRect(origin: .zero, size: wallpaperSize))
+        let isUsableWallpaperRectValid = usableWallpaperRect.minX.isFinite
+            && usableWallpaperRect.minY.isFinite
+            && usableWallpaperRect.width.isFinite
+            && usableWallpaperRect.height.isFinite
 
-        guard usableWallpaperRect.width >= adaptiveContrastMinimumWallpaperCropSizeInPixels,
+        guard isUsableWallpaperRectValid,
+              usableWallpaperRect.width >= adaptiveContrastMinimumWallpaperCropSizeInPixels,
               usableWallpaperRect.height >= adaptiveContrastMinimumWallpaperCropSizeInPixels,
               let wallpaperCrop = wallpaperCGImage.cropping(to: usableWallpaperRect)
         else {
