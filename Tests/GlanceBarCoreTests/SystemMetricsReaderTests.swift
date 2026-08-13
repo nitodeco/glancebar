@@ -70,3 +70,14 @@ import Testing
 
     #expect(reader.readGpuUsagePercent() == 42)
 }
+
+@Test func calculatesCpuTickDeltaAcrossSignedBoundaryAndRollover() {
+    #expect(getTickDelta(from: UInt32(Int32.max), to: UInt32(bitPattern: Int32.min)) == 1)
+    #expect(getTickDelta(from: UInt32.max, to: 0) == 1)
+}
+
+@Test func validatesCpuTickBufferShape() {
+    #expect(hasValidCpuTickBufferShape(tickCount: 32, processorCount: 8, cpuLoadInfoCount: 4))
+    #expect(!hasValidCpuTickBufferShape(tickCount: 31, processorCount: 8, cpuLoadInfoCount: 4))
+    #expect(!hasValidCpuTickBufferShape(tickCount: 0, processorCount: 0, cpuLoadInfoCount: 4))
+}

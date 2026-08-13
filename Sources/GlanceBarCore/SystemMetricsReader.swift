@@ -12,7 +12,7 @@ private let networkIpv6StateKey = "State:/Network/Global/IPv6"
 private let primaryInterfaceKey = "PrimaryInterface"
 
 public final class SystemMetricsReader {
-    private var maybePreviousCpuTicks: [integer_t]?
+    private var maybePreviousCpuTicks: [UInt32]?
     private var maybePreviousNetworkCounters: NetworkCounters?
     private var maybePreviousNetworkDate: Date?
     private var cachedSsdUsagePercent: Int = 0
@@ -70,10 +70,25 @@ public final class SystemMetricsReader {
             return 0
         }
 
-        let tickCount = Int(cpuInfoCount)
-        let ticks = (0..<tickCount).map { cpuInfo[$0] }
         let vmSize = vm_size_t(cpuInfoCount) * vm_size_t(MemoryLayout<integer_t>.stride)
-        vm_deallocate(mach_task_self_, vm_address_t(bitPattern: cpuInfo), vmSize)
+        defer {
+            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: cpuInfo), vmSize)
+        }
+
+        let tickCount = Int(cpuInfoCount)
+        let cpuLoadInfoCount = Int(CPU_STATE_MAX)
+
+        guard hasValidCpuTickBufferShape(
+            tickCount: tickCount,
+            processorCount: Int(processorCount),
+            cpuLoadInfoCount: cpuLoadInfoCount
+        ) else {
+            return 0
+        }
+
+        let ticks = (0..<tickCount).map { tickOffset in
+            UInt32(bitPattern: cpuInfo[tickOffset])
+        }
 
         guard let previousCpuTicks = maybePreviousCpuTicks, previousCpuTicks.count == ticks.count else {
             maybePreviousCpuTicks = ticks
@@ -82,20 +97,36 @@ public final class SystemMetricsReader {
 
         maybePreviousCpuTicks = ticks
 
-        let cpuLoadInfoCount = Int(CPU_STATE_MAX)
-        let processorUsages = stride(from: 0, to: ticks.count, by: cpuLoadInfoCount).map { tickOffset in
+        let processorUsages = stride(from: 0, to: ticks.count, by: cpuLoadInfoCount).compactMap { tickOffset -> CpuUsage? in
             let userIndex = tickOffset + Int(CPU_STATE_USER)
             let systemIndex = tickOffset + Int(CPU_STATE_SYSTEM)
             let niceIndex = tickOffset + Int(CPU_STATE_NICE)
             let idleIndex = tickOffset + Int(CPU_STATE_IDLE)
-            let user = tickDelta(from: previousCpuTicks[userIndex], to: ticks[userIndex])
-            let system = tickDelta(from: previousCpuTicks[systemIndex], to: ticks[systemIndex])
-            let nice = tickDelta(from: previousCpuTicks[niceIndex], to: ticks[niceIndex])
-            let idle = tickDelta(from: previousCpuTicks[idleIndex], to: ticks[idleIndex])
+            guard
+                let previousUserTick = getCpuTick(ticks: previousCpuTicks, index: userIndex),
+                let userTick = getCpuTick(ticks: ticks, index: userIndex),
+                let previousSystemTick = getCpuTick(ticks: previousCpuTicks, index: systemIndex),
+                let systemTick = getCpuTick(ticks: ticks, index: systemIndex),
+                let previousNiceTick = getCpuTick(ticks: previousCpuTicks, index: niceIndex),
+                let niceTick = getCpuTick(ticks: ticks, index: niceIndex),
+                let previousIdleTick = getCpuTick(ticks: previousCpuTicks, index: idleIndex),
+                let idleTick = getCpuTick(ticks: ticks, index: idleIndex)
+            else {
+                return nil
+            }
+
+            let user = getTickDelta(from: previousUserTick, to: userTick)
+            let system = getTickDelta(from: previousSystemTick, to: systemTick)
+            let nice = getTickDelta(from: previousNiceTick, to: niceTick)
+            let idle = getTickDelta(from: previousIdleTick, to: idleTick)
             let active = user + system + nice
             let total = active + idle
 
             return CpuUsage(activeTicks: active, totalTicks: total)
+        }
+
+        guard processorUsages.count == Int(processorCount) else {
+            return 0
         }
 
         let totalActiveTicks = processorUsages.reduce(UInt64(0)) { acc, usage in
@@ -170,14 +201,20 @@ private func clampPercent(_ percent: Int) -> Int {
     min(max(percent, 0), 100)
 }
 
-private func tickDelta(from previousTick: integer_t, to tick: integer_t) -> UInt64 {
-    let delta = tick - previousTick
+func hasValidCpuTickBufferShape(tickCount: Int, processorCount: Int, cpuLoadInfoCount: Int) -> Bool {
+    processorCount > 0
+        && cpuLoadInfoCount > 0
+        && tickCount == processorCount * cpuLoadInfoCount
+}
 
-    guard delta > 0 else {
-        return 0
-    }
+func getTickDelta(from previousTick: UInt32, to tick: UInt32) -> UInt64 {
+    UInt64(tick &- previousTick)
+}
 
-    return UInt64(delta)
+private func getCpuTick(ticks: [UInt32], index: Int) -> UInt32? {
+    ticks.enumerated().first { tickIndex, _ in
+        tickIndex == index
+    }?.element
 }
 
 private func readLiveRamUsagePercent() -> Int {
