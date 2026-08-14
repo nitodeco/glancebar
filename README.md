@@ -1,10 +1,20 @@
-# GlanceBar
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/glancebar-icon-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/glancebar-icon-light.png">
+    <img alt="GlanceBar app icon" src="docs/glancebar-icon-light.png" width="96" height="96">
+  </picture>
 
-GlanceBar is a lightweight native macOS menu bar app for glanceable resource usage. It keeps CPU, GPU, memory, storage, and network activity visible without charts, popovers, notifications, or a web runtime.
+  <h1>GlanceBar</h1>
+
+  <p><strong>Glanceable system stats, right in your macOS menu bar.</strong></p>
+
+  <p>A lightweight native app for CPU, GPU, memory, storage, and network activity—without charts, popovers, notifications, or a web runtime.</p>
+
+  <p><a href="https://github.com/nitodeco/glancebar/releases/latest/download/GlanceBar.dmg"><strong>Download GlanceBar for macOS</strong></a></p>
+</div>
 
 ![GlanceBar menu bar stats](docs/glancebar-stats.png)
-
-**[Download GlanceBar for macOS](https://github.com/nitodeco/glancebar/releases/latest/download/GlanceBar.dmg)**
 
 ## Features
 
