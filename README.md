@@ -4,6 +4,8 @@ GlanceBar is a lightweight native macOS menu bar app for glanceable resource usa
 
 ![GlanceBar menu bar stats](docs/glancebar-stats.png)
 
+**[Download GlanceBar for macOS](https://github.com/nitodeco/glancebar/releases/latest/download/GlanceBar.app.zip)**
+
 ## Features
 
 - CPU, optional GPU, RAM, and SSD usage as compact percentages.
@@ -21,7 +23,7 @@ GlanceBar is a lightweight native macOS menu bar app for glanceable resource usa
 
 ## Quick Start
 
-Download `GlanceBar.app.zip` from the latest GitHub Release, unzip it, and move `GlanceBar.app` to Applications.
+Download [GlanceBar.app.zip](https://github.com/nitodeco/glancebar/releases/latest/download/GlanceBar.app.zip), unzip it, and move `GlanceBar.app` to Applications.
 
 On first launch, macOS may require opening it from Finder with Open unless the release has been Developer ID signed and notarized.
 
