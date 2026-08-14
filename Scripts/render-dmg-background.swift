@@ -9,6 +9,7 @@ private let arrowEnd = CGPoint(x: 390, y: 195)
 private let arrowHeadLengthInPixels: CGFloat = 18
 private let arrowHeadHeightInPixels: CGFloat = 13
 private let glanceBarLabelPlate = NSRect(x: 123, y: 98, width: 104, height: 27)
+private let applicationsLabelPlate = NSRect(x: 433, y: 98, width: 104, height: 27)
 private let brandColors = [
     NSColor(srgbRed: 0.83, green: 0.62, blue: 0.00, alpha: 1),
     NSColor(srgbRed: 0.86, green: 0.04, blue: 0.08, alpha: 1),
@@ -135,6 +136,7 @@ NSRect(x: 0, y: 0, width: canvasWidthInPixels, height: canvasHeightInPixels).fil
 drawGrid()
 NSColor.white.withAlphaComponent(0.96).setFill()
 NSBezierPath(roundedRect: glanceBarLabelPlate, xRadius: 7, yRadius: 7).fill()
+NSBezierPath(roundedRect: applicationsLabelPlate, xRadius: 7, yRadius: 7).fill()
 drawGradientStroke(
     context: graphicsContext.cgContext,
     path: makeActivityTracePath(),

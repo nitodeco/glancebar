@@ -10,7 +10,6 @@ writable_dmg_path="$repo_root/.build/release/GlanceBar-rw.dmg"
 mount_dir="$(mktemp -d)"
 signing_identity="${GLANCEBAR_SIGNING_IDENTITY:-}"
 mounted_device=""
-applications_alias_name=$'\u2063'
 
 cleanup() {
   if [[ -n "$mounted_device" ]]; then
@@ -32,7 +31,7 @@ fi
 rm -rf "$dmg_contents"
 mkdir -p "$dmg_contents" "$dist_dir"
 ditto "$app_bundle" "$dmg_contents/GlanceBar.app"
-ln -s /Applications "$dmg_contents/$applications_alias_name"
+ln -s /Applications "$dmg_contents/Applications"
 
 rm -f "$dmg_path" "$writable_dmg_path"
 hdiutil create -volname GlanceBar -srcfolder "$dmg_contents" -ov -format UDRW -fs HFS+ "$writable_dmg_path" >/dev/null
@@ -41,7 +40,6 @@ mounted_device="$(df "$mount_dir" | awk 'NR == 2 { print $1 }')"
 
 osascript <<EOF
 tell application "Finder"
-  set applicationsAliasName to character id 8291
   set mountedDisk to POSIX file "$mount_dir" as alias
   open mountedDisk
   delay 1
@@ -59,7 +57,7 @@ tell application "Finder"
   set background picture of iconOptions to file "GlanceBar.app:Contents:Resources:dmg-background.png" of mountedDisk
   set extension hidden of item "GlanceBar.app" of mountedDisk to true
   set position of item "GlanceBar.app" of mountedDisk to {175, 195}
-  set position of item applicationsAliasName of mountedDisk to {485, 195}
+  set position of item "Applications" of mountedDisk to {485, 195}
   update mountedDisk without registering applications
   delay 1
   close installerWindow
