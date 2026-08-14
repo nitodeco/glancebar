@@ -41,6 +41,7 @@ mounted_device="$(df "$mount_dir" | awk 'NR == 2 { print $1 }')"
 
 osascript <<EOF
 tell application "Finder"
+  set applicationsAliasName to character id 8291
   set mountedDisk to POSIX file "$mount_dir" as alias
   open mountedDisk
   delay 1
@@ -58,7 +59,7 @@ tell application "Finder"
   set background picture of iconOptions to file "GlanceBar.app:Contents:Resources:dmg-background.png" of mountedDisk
   set extension hidden of item "GlanceBar.app" of mountedDisk to true
   set position of item "GlanceBar.app" of mountedDisk to {175, 195}
-  set position of item "$applications_alias_name" of mountedDisk to {485, 195}
+  set position of item applicationsAliasName of mountedDisk to {485, 195}
   update mountedDisk without registering applications
   delay 1
   close installerWindow
