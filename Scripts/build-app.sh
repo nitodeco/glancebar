@@ -22,4 +22,5 @@ xcrun actool "$repo_root/Packaging/GlanceBar.icon" \
   --output-partial-info-plist "$icon_info_plist"
 /usr/libexec/PlistBuddy -c "Merge $icon_info_plist" "$app_bundle/Contents/Info.plist"
 rm -f "$icon_info_plist"
+xcrun swift "$repo_root/Scripts/render-dmg-background.swift" "$resources_dir/dmg-background.png"
 echo "$app_bundle"
