@@ -54,14 +54,14 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
     private let launchAtLoginButton = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let pollingValueLabel = NSTextField(labelWithString: "")
     private let gpuMultiplierValueLabel = NSTextField(labelWithString: "")
-    private let yellowThresholdValueLabel = NSTextField(labelWithString: "")
-    private let thresholdValueLabel = NSTextField(labelWithString: "")
+    private let warningThresholdValueLabel = NSTextField(labelWithString: "")
+    private let criticalThresholdValueLabel = NSTextField(labelWithString: "")
     private let pollingStepper = NSStepper()
     private let gpuMultiplierStepper = NSStepper()
-    private let yellowThresholdStepper = NSStepper()
-    private let thresholdStepper = NSStepper()
-    private let yellowColorMenu = NSPopUpButton()
     private let warningColorMenu = NSPopUpButton()
+    private let warningThresholdStepper = NSStepper()
+    private let criticalThresholdStepper = NSStepper()
+    private let criticalColorMenu = NSPopUpButton()
     private let uploadColorMenu = NSPopUpButton()
     private let downloadColorMenu = NSPopUpButton()
     private let baseTextColorMenu = NSPopUpButton()
@@ -106,13 +106,13 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
             makeCheckboxRow(label: "Launch at login", checkbox: launchAtLoginButton),
             makeNumberRow(label: "Polling", valueLabel: pollingValueLabel, stepper: pollingStepper),
             makeNumberRow(label: "GPU every", valueLabel: gpuMultiplierValueLabel, stepper: gpuMultiplierStepper),
-            makeNumberRow(label: "Yellow above", valueLabel: yellowThresholdValueLabel, stepper: yellowThresholdStepper),
-            makeNumberRow(label: "Red above", valueLabel: thresholdValueLabel, stepper: thresholdStepper),
+            makeNumberRow(label: "Warning above", valueLabel: warningThresholdValueLabel, stepper: warningThresholdStepper),
+            makeNumberRow(label: "Critical above", valueLabel: criticalThresholdValueLabel, stepper: criticalThresholdStepper),
             makeMetricList()
         ]))
         tabView.addTabViewItem(makeTabViewItem(label: "Colors", arrangedSubviews: [
-            makeColorRow(label: "Yellow", colorMenu: yellowColorMenu),
-            makeColorRow(label: "Over threshold", colorMenu: warningColorMenu),
+            makeColorRow(label: "Warning", colorMenu: warningColorMenu),
+            makeColorRow(label: "Critical", colorMenu: criticalColorMenu),
             makeColorRow(label: "Upload", colorMenu: uploadColorMenu),
             makeColorRow(label: "Download", colorMenu: downloadColorMenu),
             makeColorRow(label: "Base text", colorMenu: baseTextColorMenu),
@@ -163,12 +163,12 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
         pollingStepper.action = #selector(updatePollingInterval)
         gpuMultiplierStepper.target = self
         gpuMultiplierStepper.action = #selector(updateGpuPollingMultiplier)
-        yellowThresholdStepper.target = self
-        yellowThresholdStepper.action = #selector(updateYellowThreshold)
-        thresholdStepper.target = self
-        thresholdStepper.action = #selector(updateWarningThreshold)
-        configureColorMenu(yellowColorMenu, presets: colorPresets, action: #selector(updateYellowColor))
+        warningThresholdStepper.target = self
+        warningThresholdStepper.action = #selector(updateWarningThreshold)
+        criticalThresholdStepper.target = self
+        criticalThresholdStepper.action = #selector(updateCriticalThreshold)
         configureColorMenu(warningColorMenu, presets: colorPresets, action: #selector(updateWarningColor))
+        configureColorMenu(criticalColorMenu, presets: colorPresets, action: #selector(updateCriticalColor))
         configureColorMenu(uploadColorMenu, presets: colorPresets, action: #selector(updateUploadColor))
         configureColorMenu(downloadColorMenu, presets: colorPresets, action: #selector(updateDownloadColor))
         configureColorMenu(baseTextColorMenu, presets: textColorPresets, action: #selector(updateBaseTextColor))
@@ -381,20 +381,20 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
         gpuMultiplierValueLabel.stringValue = "\(configuration.gpuPollingMultiplier)x"
         gpuMultiplierValueLabel.textColor = configuration.isGpuEnabled ? .labelColor : .disabledControlTextColor
 
-        yellowThresholdStepper.minValue = Double(minimumWarningThresholdPercent)
-        yellowThresholdStepper.maxValue = Double(max(minimumWarningThresholdPercent, configuration.warningThresholdPercent - 1))
-        yellowThresholdStepper.increment = 1
-        yellowThresholdStepper.integerValue = configuration.yellowThresholdPercent
-        yellowThresholdValueLabel.stringValue = "\(configuration.yellowThresholdPercent)%"
+        warningThresholdStepper.minValue = Double(minimumThresholdPercent)
+        warningThresholdStepper.maxValue = Double(max(minimumThresholdPercent, configuration.criticalThresholdPercent - 1))
+        warningThresholdStepper.increment = 1
+        warningThresholdStepper.integerValue = configuration.warningThresholdPercent
+        warningThresholdValueLabel.stringValue = "\(configuration.warningThresholdPercent)%"
 
-        thresholdStepper.minValue = Double(minimumWarningThresholdPercent)
-        thresholdStepper.maxValue = Double(maximumWarningThresholdPercent)
-        thresholdStepper.increment = 1
-        thresholdStepper.integerValue = configuration.warningThresholdPercent
-        thresholdValueLabel.stringValue = "\(configuration.warningThresholdPercent)%"
+        criticalThresholdStepper.minValue = Double(minimumThresholdPercent)
+        criticalThresholdStepper.maxValue = Double(maximumThresholdPercent)
+        criticalThresholdStepper.increment = 1
+        criticalThresholdStepper.integerValue = configuration.criticalThresholdPercent
+        criticalThresholdValueLabel.stringValue = "\(configuration.criticalThresholdPercent)%"
 
-        selectColorPreset(id: configuration.yellowColorID, in: yellowColorMenu)
         selectColorPreset(id: configuration.warningColorID, in: warningColorMenu)
+        selectColorPreset(id: configuration.criticalColorID, in: criticalColorMenu)
         selectColorPreset(id: configuration.uploadColorID, in: uploadColorMenu)
         selectColorPreset(id: configuration.downloadColorID, in: downloadColorMenu)
         selectTextColorPreset(id: configuration.baseTextColorID, in: baseTextColorMenu)
@@ -449,12 +449,12 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
 
     private func selectedColorRole() -> ColorRole {
         guard let maybeRoleID = advancedColorRoleMenu.selectedItem?.representedObject as? String else {
-            return colorRoles.first ?? ColorRole(id: yellowColorKey, title: "Yellow", usesTextPresets: false)
+            return colorRoles.first ?? ColorRole(id: warningColorKey, title: "Warning", usesTextPresets: false)
         }
 
         return colorRoles.first { colorRole in
             colorRole.id == maybeRoleID
-        } ?? ColorRole(id: yellowColorKey, title: "Yellow", usesTextPresets: false)
+        } ?? ColorRole(id: warningColorKey, title: "Warning", usesTextPresets: false)
     }
 
     private func getAdjustedColor(colorRole: ColorRole) -> NSColor {
@@ -466,12 +466,12 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
     }
 
     private func getColorID(colorRole: ColorRole) -> String {
-        if colorRole.id == yellowColorKey {
-            return configuration.yellowColorID
-        }
-
         if colorRole.id == warningColorKey {
             return configuration.warningColorID
+        }
+
+        if colorRole.id == criticalColorKey {
+            return configuration.criticalColorID
         }
 
         if colorRole.id == uploadColorKey {
@@ -578,10 +578,10 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
         enabledMetricIDs: Set<String>? = nil,
         orderedMetricIDs: [String]? = nil,
         gpuPollingMultiplier: Int? = nil,
-        yellowThresholdPercent: Int? = nil,
-        yellowColorID: String? = nil,
         warningThresholdPercent: Int? = nil,
         warningColorID: String? = nil,
+        criticalThresholdPercent: Int? = nil,
+        criticalColorID: String? = nil,
         uploadColorID: String? = nil,
         downloadColorID: String? = nil,
         baseTextColorID: String? = nil,
@@ -595,10 +595,10 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
             enabledMetricIDs: enabledMetricIDs ?? configuration.enabledMetricIDs,
             orderedMetricIDs: orderedMetricIDs ?? configuration.orderedMetricIDs,
             gpuPollingMultiplier: gpuPollingMultiplier ?? configuration.gpuPollingMultiplier,
-            yellowThresholdPercent: yellowThresholdPercent ?? configuration.yellowThresholdPercent,
-            yellowColorID: yellowColorID ?? configuration.yellowColorID,
             warningThresholdPercent: warningThresholdPercent ?? configuration.warningThresholdPercent,
             warningColorID: warningColorID ?? configuration.warningColorID,
+            criticalThresholdPercent: criticalThresholdPercent ?? configuration.criticalThresholdPercent,
+            criticalColorID: criticalColorID ?? configuration.criticalColorID,
             uploadColorID: uploadColorID ?? configuration.uploadColorID,
             downloadColorID: downloadColorID ?? configuration.downloadColorID,
             baseTextColorID: baseTextColorID ?? configuration.baseTextColorID,
@@ -626,26 +626,26 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
         onChange(configuration)
     }
 
-    @objc private func updateYellowThreshold() {
-        configuration = makeConfiguration(yellowThresholdPercent: yellowThresholdStepper.integerValue)
-        syncControls()
-        onChange(configuration)
-    }
-
     @objc private func updateWarningThreshold() {
-        configuration = makeConfiguration(warningThresholdPercent: thresholdStepper.integerValue)
+        configuration = makeConfiguration(warningThresholdPercent: warningThresholdStepper.integerValue)
         syncControls()
         onChange(configuration)
     }
 
-    @objc private func updateYellowColor() {
-        configuration = makeConfiguration(yellowColorID: selectedColorID(in: yellowColorMenu, fallback: configuration.yellowColorID))
+    @objc private func updateCriticalThreshold() {
+        configuration = makeConfiguration(criticalThresholdPercent: criticalThresholdStepper.integerValue)
         syncControls()
         onChange(configuration)
     }
 
     @objc private func updateWarningColor() {
         configuration = makeConfiguration(warningColorID: selectedColorID(in: warningColorMenu, fallback: configuration.warningColorID))
+        syncControls()
+        onChange(configuration)
+    }
+
+    @objc private func updateCriticalColor() {
+        configuration = makeConfiguration(criticalColorID: selectedColorID(in: criticalColorMenu, fallback: configuration.criticalColorID))
         syncControls()
         onChange(configuration)
     }

@@ -174,12 +174,12 @@ final class StatusMetricsView: NSView {
     }
 
     private func getValueColor(percent: Int) -> NSColor {
-        if percent > configuration.warningThresholdPercent {
-            return configuration.warningColor
+        if percent > configuration.criticalThresholdPercent {
+            return configuration.criticalColor
         }
 
-        if percent > configuration.yellowThresholdPercent {
-            return configuration.yellowColor
+        if percent > configuration.warningThresholdPercent {
+            return configuration.warningColor
         }
 
         return adaptiveTextColor ?? configuration.baseTextColor

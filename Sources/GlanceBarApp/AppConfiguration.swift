@@ -4,8 +4,8 @@ let minimumPollingIntervalInSeconds: TimeInterval = 1
 let maximumPollingIntervalInSeconds: TimeInterval = 60
 let minimumGpuPollingMultiplier = 1
 let maximumGpuPollingMultiplier = 20
-let minimumWarningThresholdPercent = 1
-let maximumWarningThresholdPercent = 100
+let minimumThresholdPercent = 1
+let maximumThresholdPercent = 100
 let minimumColorAdjustmentPercent = -100
 let maximumColorAdjustmentPercent = 100
 let cpuMetricID = "cpu"
@@ -42,10 +42,12 @@ private let enabledMetricIDsKey = "enabledMetricIDs"
 private let orderedMetricIDsKey = "orderedMetricIDs"
 private let gpuPollingMultiplierKey = "gpuPollingMultiplier"
 private let legacyGpuPollingIntervalKey = "gpuPollingIntervalInSeconds"
-private let yellowThresholdKey = "yellowThresholdPercent"
-let yellowColorKey = "yellowColor"
 private let warningThresholdKey = "warningThresholdPercent"
 let warningColorKey = "warningColor"
+private let criticalThresholdKey = "criticalThresholdPercent"
+let criticalColorKey = "criticalColor"
+private let legacyYellowThresholdKey = "yellowThresholdPercent"
+private let legacyYellowColorKey = "yellowColor"
 let uploadColorKey = "uploadColor"
 let downloadColorKey = "downloadColor"
 let baseTextColorKey = "baseTextColor"
@@ -56,18 +58,18 @@ private let hueAdjustmentKeySuffix = "HueAdjustment"
 private let saturationAdjustmentKeySuffix = "SaturationAdjustment"
 private let lightnessAdjustmentKeySuffix = "LightnessAdjustment"
 private let defaultPollingIntervalInSeconds: TimeInterval = 3
-private let defaultEnabledMetricIDs = [cpuMetricID, ramMetricID, ssdMetricID, networkMetricID]
+private let defaultEnabledMetricIDs = [cpuMetricID, gpuMetricID, ramMetricID, ssdMetricID, networkMetricID]
 private let defaultOrderedMetricIDs = [cpuMetricID, gpuMetricID, ramMetricID, ssdMetricID, networkMetricID]
 private let defaultGpuPollingMultiplier = 2
-private let defaultYellowThresholdPercent = 60
-private let defaultYellowColorID = "yellow"
-private let defaultWarningThresholdPercent = 80
-private let defaultWarningColorID = "red"
+private let defaultWarningThresholdPercent = 75
+private let defaultWarningColorID = "yellow"
+private let defaultCriticalThresholdPercent = 90
+private let defaultCriticalColorID = "red"
 private let defaultUploadColorID = "purple"
 private let defaultDownloadColorID = "blue"
 private let defaultBaseTextColorID = "white"
 private let defaultLabelTextColorID = "white"
-private let defaultIsAutoTextContrastEnabled = false
+private let defaultIsAutoTextContrastEnabled = true
 private let defaultIsLaunchAtLoginEnabled = true
 
 struct AppConfiguration {
@@ -77,18 +79,18 @@ struct AppConfiguration {
     let enabledMetricIDs: Set<String>
     let orderedMetricIDs: [String]
     let gpuPollingMultiplier: Int
-    let yellowThresholdPercent: Int
-    let yellowColorID: String
     let warningThresholdPercent: Int
     let warningColorID: String
+    let criticalThresholdPercent: Int
+    let criticalColorID: String
     let uploadColorID: String
     let downloadColorID: String
     let baseTextColorID: String
     let labelTextColorID: String
     let isAutoTextContrastEnabled: Bool
     let colorAdjustments: [String: ColorAdjustment]
-    let yellowColor: NSColor
     let warningColor: NSColor
+    let criticalColor: NSColor
     let uploadColor: NSColor
     let downloadColor: NSColor
     let baseTextColor: NSColor
@@ -120,8 +122,8 @@ struct ColorRole {
 }
 
 let colorRoles = [
-    ColorRole(id: yellowColorKey, title: "Yellow", usesTextPresets: false),
-    ColorRole(id: warningColorKey, title: "Over threshold", usesTextPresets: false),
+    ColorRole(id: warningColorKey, title: "Warning", usesTextPresets: false),
+    ColorRole(id: criticalColorKey, title: "Critical", usesTextPresets: false),
     ColorRole(id: uploadColorKey, title: "Upload", usesTextPresets: false),
     ColorRole(id: downloadColorKey, title: "Download", usesTextPresets: false),
     ColorRole(id: baseTextColorKey, title: "Base text", usesTextPresets: true),
@@ -138,6 +140,7 @@ final class AppConfigurationStore {
 
     func load() -> AppConfiguration {
         let defaultConfiguration = makeDefaultAppConfiguration()
+        let isLegacySemanticConfiguration = userDefaults.object(forKey: criticalThresholdKey) == nil
         let pollingIntervalInSeconds = clamp(
             value: userDefaults.double(forKey: pollingIntervalKey),
             fallback: defaultConfiguration.pollingIntervalInSeconds,
@@ -148,17 +151,17 @@ final class AppConfigurationStore {
             pollingIntervalInSeconds: pollingIntervalInSeconds,
             fallback: defaultConfiguration.gpuPollingMultiplier
         )
-        let warningThresholdPercent = clamp(
-            value: userDefaults.integer(forKey: warningThresholdKey),
-            fallback: defaultConfiguration.warningThresholdPercent,
-            minValue: minimumWarningThresholdPercent,
-            maxValue: maximumWarningThresholdPercent
+        let criticalThresholdPercent = clamp(
+            value: userDefaults.integer(forKey: isLegacySemanticConfiguration ? warningThresholdKey : criticalThresholdKey),
+            fallback: defaultConfiguration.criticalThresholdPercent,
+            minValue: minimumThresholdPercent,
+            maxValue: maximumThresholdPercent
         )
-        let yellowThresholdPercent = clamp(
-            value: userDefaults.integer(forKey: yellowThresholdKey),
-            fallback: defaultConfiguration.yellowThresholdPercent,
-            minValue: minimumWarningThresholdPercent,
-            maxValue: max(minimumWarningThresholdPercent, warningThresholdPercent - 1)
+        let warningThresholdPercent = clamp(
+            value: userDefaults.integer(forKey: isLegacySemanticConfiguration ? legacyYellowThresholdKey : warningThresholdKey),
+            fallback: defaultConfiguration.warningThresholdPercent,
+            minValue: minimumThresholdPercent,
+            maxValue: max(minimumThresholdPercent, criticalThresholdPercent - 1)
         )
 
         return AppConfiguration(
@@ -167,16 +170,16 @@ final class AppConfigurationStore {
             enabledMetricIDs: readEnabledMetricIDs(defaultConfiguration: defaultConfiguration),
             orderedMetricIDs: readOrderedMetricIDs(defaultConfiguration: defaultConfiguration),
             gpuPollingMultiplier: gpuPollingMultiplier,
-            yellowThresholdPercent: yellowThresholdPercent,
-            yellowColorID: readColorID(forKey: yellowColorKey, fallback: defaultConfiguration.yellowColorID),
             warningThresholdPercent: warningThresholdPercent,
-            warningColorID: readColorID(forKey: warningColorKey, fallback: defaultConfiguration.warningColorID),
+            warningColorID: readColorID(forKey: isLegacySemanticConfiguration ? legacyYellowColorKey : warningColorKey, fallback: defaultConfiguration.warningColorID),
+            criticalThresholdPercent: criticalThresholdPercent,
+            criticalColorID: readColorID(forKey: isLegacySemanticConfiguration ? warningColorKey : criticalColorKey, fallback: defaultConfiguration.criticalColorID),
             uploadColorID: readColorID(forKey: uploadColorKey, fallback: defaultConfiguration.uploadColorID),
             downloadColorID: readColorID(forKey: downloadColorKey, fallback: defaultConfiguration.downloadColorID),
             baseTextColorID: readTextColorID(forKey: baseTextColorKey, fallback: defaultConfiguration.baseTextColorID),
             labelTextColorID: readTextColorID(forKey: labelTextColorKey, fallback: defaultConfiguration.labelTextColorID),
             isAutoTextContrastEnabled: userDefaults.object(forKey: isAutoTextContrastEnabledKey) as? Bool ?? defaultConfiguration.isAutoTextContrastEnabled,
-            colorAdjustments: readColorAdjustments()
+            colorAdjustments: readColorAdjustments(isLegacySemanticConfiguration: isLegacySemanticConfiguration)
         )
     }
 
@@ -187,10 +190,10 @@ final class AppConfigurationStore {
         userDefaults.set(Array(configuration.enabledMetricIDs), forKey: enabledMetricIDsKey)
         userDefaults.set(configuration.orderedMetricIDs, forKey: orderedMetricIDsKey)
         userDefaults.set(configuration.gpuPollingMultiplier, forKey: gpuPollingMultiplierKey)
-        userDefaults.set(configuration.yellowThresholdPercent, forKey: yellowThresholdKey)
-        userDefaults.set(configuration.yellowColorID, forKey: yellowColorKey)
         userDefaults.set(configuration.warningThresholdPercent, forKey: warningThresholdKey)
         userDefaults.set(configuration.warningColorID, forKey: warningColorKey)
+        userDefaults.set(configuration.criticalThresholdPercent, forKey: criticalThresholdKey)
+        userDefaults.set(configuration.criticalColorID, forKey: criticalColorKey)
         userDefaults.set(configuration.uploadColorID, forKey: uploadColorKey)
         userDefaults.set(configuration.downloadColorID, forKey: downloadColorKey)
         userDefaults.set(configuration.baseTextColorID, forKey: baseTextColorKey)
@@ -243,14 +246,31 @@ final class AppConfigurationStore {
         return normalizeMetricOrder(metricIDs: maybeOrderedMetricIDs)
     }
 
-    private func readColorAdjustments() -> [String: ColorAdjustment] {
+    private func readColorAdjustments(isLegacySemanticConfiguration: Bool) -> [String: ColorAdjustment] {
         colorRoles.reduce(into: [String: ColorAdjustment]()) { colorAdjustments, colorRole in
+            let storedColorRoleID = getStoredColorRoleID(colorRoleID: colorRole.id, isLegacySemanticConfiguration: isLegacySemanticConfiguration)
             colorAdjustments[colorRole.id] = ColorAdjustment(
-                huePercent: readColorAdjustmentValue(forKey: colorRole.id + hueAdjustmentKeySuffix),
-                saturationPercent: readColorAdjustmentValue(forKey: colorRole.id + saturationAdjustmentKeySuffix),
-                lightnessPercent: readColorAdjustmentValue(forKey: colorRole.id + lightnessAdjustmentKeySuffix)
+                huePercent: readColorAdjustmentValue(forKey: storedColorRoleID + hueAdjustmentKeySuffix),
+                saturationPercent: readColorAdjustmentValue(forKey: storedColorRoleID + saturationAdjustmentKeySuffix),
+                lightnessPercent: readColorAdjustmentValue(forKey: storedColorRoleID + lightnessAdjustmentKeySuffix)
             )
         }
+    }
+
+    private func getStoredColorRoleID(colorRoleID: String, isLegacySemanticConfiguration: Bool) -> String {
+        guard isLegacySemanticConfiguration else {
+            return colorRoleID
+        }
+
+        if colorRoleID == warningColorKey {
+            return legacyYellowColorKey
+        }
+
+        if colorRoleID == criticalColorKey {
+            return warningColorKey
+        }
+
+        return colorRoleID
     }
 
     private func readColorAdjustmentValue(forKey key: String) -> Int {
@@ -300,10 +320,10 @@ func makeDefaultAppConfiguration() -> AppConfiguration {
         enabledMetricIDs: Set(defaultEnabledMetricIDs),
         orderedMetricIDs: defaultOrderedMetricIDs,
         gpuPollingMultiplier: defaultGpuPollingMultiplier,
-        yellowThresholdPercent: defaultYellowThresholdPercent,
-        yellowColorID: defaultYellowColorID,
         warningThresholdPercent: defaultWarningThresholdPercent,
         warningColorID: defaultWarningColorID,
+        criticalThresholdPercent: defaultCriticalThresholdPercent,
+        criticalColorID: defaultCriticalColorID,
         uploadColorID: defaultUploadColorID,
         downloadColorID: defaultDownloadColorID,
         baseTextColorID: defaultBaseTextColorID,
@@ -332,10 +352,10 @@ extension AppConfiguration {
         enabledMetricIDs: Set<String>,
         orderedMetricIDs: [String],
         gpuPollingMultiplier: Int,
-        yellowThresholdPercent: Int,
-        yellowColorID: String,
         warningThresholdPercent: Int,
         warningColorID: String,
+        criticalThresholdPercent: Int,
+        criticalColorID: String,
         uploadColorID: String,
         downloadColorID: String,
         baseTextColorID: String,
@@ -354,15 +374,15 @@ extension AppConfiguration {
             minValue: minimumGpuPollingMultiplier,
             maxValue: maximumGpuPollingMultiplier
         )
-        self.warningThresholdPercent = clamp(value: warningThresholdPercent, fallback: defaultWarningThresholdPercent, minValue: minimumWarningThresholdPercent, maxValue: maximumWarningThresholdPercent)
-        self.yellowThresholdPercent = clamp(
-            value: yellowThresholdPercent,
-            fallback: defaultYellowThresholdPercent,
-            minValue: minimumWarningThresholdPercent,
-            maxValue: max(minimumWarningThresholdPercent, self.warningThresholdPercent - 1)
+        self.criticalThresholdPercent = clamp(value: criticalThresholdPercent, fallback: defaultCriticalThresholdPercent, minValue: minimumThresholdPercent, maxValue: maximumThresholdPercent)
+        self.warningThresholdPercent = clamp(
+            value: warningThresholdPercent,
+            fallback: defaultWarningThresholdPercent,
+            minValue: minimumThresholdPercent,
+            maxValue: max(minimumThresholdPercent, self.criticalThresholdPercent - 1)
         )
-        self.yellowColorID = yellowColorID
         self.warningColorID = warningColorID
+        self.criticalColorID = criticalColorID
         self.uploadColorID = uploadColorID
         self.downloadColorID = downloadColorID
         self.baseTextColorID = baseTextColorID
@@ -376,8 +396,8 @@ extension AppConfiguration {
                 lightnessPercent: clamp(value: colorAdjustment.lightnessPercent, fallback: 0, minValue: minimumColorAdjustmentPercent, maxValue: maximumColorAdjustmentPercent)
             )
         }
-        yellowColor = applyColorAdjustment(color: getColorPreset(id: yellowColorID)?.color ?? NSColor(srgbRed: 0.72, green: 0.54, blue: 0.00, alpha: 1), colorAdjustment: getColorAdjustment(colorAdjustments: self.colorAdjustments, roleID: yellowColorKey))
-        warningColor = applyColorAdjustment(color: getColorPreset(id: warningColorID)?.color ?? .systemRed, colorAdjustment: getColorAdjustment(colorAdjustments: self.colorAdjustments, roleID: warningColorKey))
+        warningColor = applyColorAdjustment(color: getColorPreset(id: warningColorID)?.color ?? NSColor(srgbRed: 0.72, green: 0.54, blue: 0.00, alpha: 1), colorAdjustment: getColorAdjustment(colorAdjustments: self.colorAdjustments, roleID: warningColorKey))
+        criticalColor = applyColorAdjustment(color: getColorPreset(id: criticalColorID)?.color ?? .systemRed, colorAdjustment: getColorAdjustment(colorAdjustments: self.colorAdjustments, roleID: criticalColorKey))
         uploadColor = applyColorAdjustment(color: getColorPreset(id: uploadColorID)?.color ?? .systemPurple, colorAdjustment: getColorAdjustment(colorAdjustments: self.colorAdjustments, roleID: uploadColorKey))
         downloadColor = applyColorAdjustment(color: getColorPreset(id: downloadColorID)?.color ?? .systemBlue, colorAdjustment: getColorAdjustment(colorAdjustments: self.colorAdjustments, roleID: downloadColorKey))
         baseTextColor = applyColorAdjustment(color: getTextColorPreset(id: baseTextColorID)?.color ?? .white, colorAdjustment: getColorAdjustment(colorAdjustments: self.colorAdjustments, roleID: baseTextColorKey))
