@@ -4,7 +4,7 @@ GlanceBar is a lightweight native macOS menu bar app for glanceable resource usa
 
 ![GlanceBar menu bar stats](docs/glancebar-stats.png)
 
-**[Download GlanceBar for macOS](https://github.com/nitodeco/glancebar/releases/latest/download/GlanceBar.app.zip)**
+**[Download GlanceBar for macOS](https://github.com/nitodeco/glancebar/releases/latest/download/GlanceBar.dmg)**
 
 ## Features
 
@@ -23,9 +23,9 @@ GlanceBar is a lightweight native macOS menu bar app for glanceable resource usa
 
 ## Quick Start
 
-Download [GlanceBar.app.zip](https://github.com/nitodeco/glancebar/releases/latest/download/GlanceBar.app.zip), unzip it, and move `GlanceBar.app` to Applications.
+Download [GlanceBar.dmg](https://github.com/nitodeco/glancebar/releases/latest/download/GlanceBar.dmg), open it, and drag `GlanceBar.app` to Applications. A [ZIP archive](https://github.com/nitodeco/glancebar/releases/latest/download/GlanceBar.app.zip) is also available.
 
-On first launch, macOS may require opening it from Finder with Open unless the release has been Developer ID signed and notarized.
+GlanceBar releases are Developer ID signed and notarized so macOS can verify them on first launch.
 
 ## Development
 
@@ -54,7 +54,7 @@ Sign a release `.app` bundle:
 GLANCEBAR_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./Scripts/sign-app.sh
 ```
 
-Create a zipped app archive:
+Create a signed release disk image:
 
 ```sh
 GLANCEBAR_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./Scripts/package-app.sh
@@ -83,18 +83,21 @@ swift test
 .build/release/GlanceBar.app
 ```
 
-`./Scripts/package-app.sh` writes the release archive to:
+`./Scripts/package-app.sh` writes the signed release disk image to:
 
 ```text
-dist/GlanceBar.app.zip
+dist/GlanceBar.dmg
 ```
 
-Release archives are signed with hardened runtime before they are zipped. Pushing a tag like `v0.1.0` creates a GitHub Release and uploads `GlanceBar.app.zip`.
+Release disk images contain `GlanceBar.app` and an Applications shortcut. Pushing a tag like `v0.1.0` signs and notarizes the disk image, staples both the disk image and app, and uploads `GlanceBar.dmg` plus `GlanceBar.app.zip`.
 
 GitHub release signing expects these repository secrets:
 
 - `APPLE_CODESIGN_CERTIFICATE_BASE64`: Base64-encoded `.p12` signing certificate.
 - `APPLE_CODESIGN_CERTIFICATE_PASSWORD`: Password for that `.p12`.
+- `APPLE_NOTARY_ISSUER_ID`: App Store Connect API issuer ID.
+- `APPLE_NOTARY_KEY_BASE64`: Base64-encoded App Store Connect API private key.
+- `APPLE_NOTARY_KEY_ID`: App Store Connect API key ID.
 
 Set the repository variable `GLANCEBAR_SIGNING_IDENTITY` if the certificate identity is not uniquely matched by `Developer ID Application`.
 
