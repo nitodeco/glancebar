@@ -39,6 +39,21 @@ jobs:
           chmod 600 "$notary_key_path"
           APPLE_NOTARY_KEY_PATH="$notary_key_path" ./Scripts/notarize-app.sh
 
+      - name: Generate signed update feed
+        env:
+          SPARKLE_EDDSA_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
+        run: |
+          mkdir -p .build/appcast
+          cp dist/GlanceBar.app.zip .build/appcast/GlanceBar.app.zip
+          printf '%s' "$SPARKLE_EDDSA_PRIVATE_KEY" | \
+            .build/artifacts/sparkle/Sparkle/bin/generate_appcast \
+              --ed-key-file - \
+              --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
+              --maximum-deltas 0 \
+              --maximum-versions 1 \
+              .build/appcast
+          cp .build/appcast/appcast.xml dist/appcast.xml
+
       - name: Remove notarization key
         if: always()
         run: rm -f "$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
@@ -49,5 +64,6 @@ jobs:
           files: |
             dist/GlanceBar.dmg
             dist/GlanceBar.app.zip
+            dist/appcast.xml
           draft: false
           prerelease: false
