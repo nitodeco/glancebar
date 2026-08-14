@@ -2,8 +2,6 @@ import AppKit
 
 let minimumPollingIntervalInSeconds: TimeInterval = 1
 let maximumPollingIntervalInSeconds: TimeInterval = 60
-let minimumGpuPollingMultiplier = 1
-let maximumGpuPollingMultiplier = 20
 let minimumThresholdPercent = 1
 let maximumThresholdPercent = 100
 let minimumColorAdjustmentPercent = -100
@@ -40,8 +38,10 @@ private let pollingIntervalKey = "pollingIntervalInSeconds"
 private let isGpuEnabledKey = "isGpuEnabled"
 private let enabledMetricIDsKey = "enabledMetricIDs"
 private let orderedMetricIDsKey = "orderedMetricIDs"
-private let gpuPollingMultiplierKey = "gpuPollingMultiplier"
+private let legacyGpuPollingMultiplierKey = "gpuPollingMultiplier"
 private let legacyGpuPollingIntervalKey = "gpuPollingIntervalInSeconds"
+private let pollingIntervalKeySuffix = "PollingIntervalInSeconds"
+private let isLowPowerModePollingAdjustmentEnabledKey = "isLowPowerModePollingAdjustmentEnabled"
 private let warningThresholdKey = "warningThresholdPercent"
 let warningColorKey = "warningColor"
 private let criticalThresholdKey = "criticalThresholdPercent"
@@ -57,10 +57,16 @@ private let isLaunchAtLoginEnabledKey = "isLaunchAtLoginEnabled"
 private let hueAdjustmentKeySuffix = "HueAdjustment"
 private let saturationAdjustmentKeySuffix = "SaturationAdjustment"
 private let lightnessAdjustmentKeySuffix = "LightnessAdjustment"
-private let defaultPollingIntervalInSeconds: TimeInterval = 3
 private let defaultEnabledMetricIDs = [cpuMetricID, gpuMetricID, ramMetricID, ssdMetricID, networkMetricID]
 private let defaultOrderedMetricIDs = [cpuMetricID, gpuMetricID, ramMetricID, ssdMetricID, networkMetricID]
-private let defaultGpuPollingMultiplier = 2
+private let defaultPollingIntervalsByMetricID: [String: TimeInterval] = [
+    cpuMetricID: 3,
+    gpuMetricID: 9,
+    ramMetricID: 3,
+    ssdMetricID: 30,
+    networkMetricID: 10
+]
+private let defaultIsLowPowerModePollingAdjustmentEnabled = true
 private let defaultWarningThresholdPercent = 75
 private let defaultWarningColorID = "yellow"
 private let defaultCriticalThresholdPercent = 90
@@ -73,12 +79,12 @@ private let defaultIsAutoTextContrastEnabled = true
 private let defaultIsLaunchAtLoginEnabled = true
 
 struct AppConfiguration {
-    let pollingIntervalInSeconds: TimeInterval
     let isLaunchAtLoginEnabled: Bool
     let isGpuEnabled: Bool
     let enabledMetricIDs: Set<String>
     let orderedMetricIDs: [String]
-    let gpuPollingMultiplier: Int
+    let pollingIntervalsByMetricID: [String: TimeInterval]
+    let isLowPowerModePollingAdjustmentEnabled: Bool
     let warningThresholdPercent: Int
     let warningColorID: String
     let criticalThresholdPercent: Int
@@ -95,6 +101,10 @@ struct AppConfiguration {
     let downloadColor: NSColor
     let baseTextColor: NSColor
     let labelTextColor: NSColor
+
+    func pollingIntervalInSeconds(metricID: String) -> TimeInterval {
+        pollingIntervalsByMetricID[metricID] ?? defaultPollingIntervalsByMetricID[metricID] ?? minimumPollingIntervalInSeconds
+    }
 }
 
 struct ColorPreset {
@@ -141,16 +151,6 @@ final class AppConfigurationStore {
     func load() -> AppConfiguration {
         let defaultConfiguration = makeDefaultAppConfiguration()
         let isLegacySemanticConfiguration = userDefaults.object(forKey: criticalThresholdKey) == nil
-        let pollingIntervalInSeconds = clamp(
-            value: userDefaults.double(forKey: pollingIntervalKey),
-            fallback: defaultConfiguration.pollingIntervalInSeconds,
-            minValue: minimumPollingIntervalInSeconds,
-            maxValue: maximumPollingIntervalInSeconds
-        )
-        let gpuPollingMultiplier = readGpuPollingMultiplier(
-            pollingIntervalInSeconds: pollingIntervalInSeconds,
-            fallback: defaultConfiguration.gpuPollingMultiplier
-        )
         let criticalThresholdPercent = clamp(
             value: userDefaults.integer(forKey: isLegacySemanticConfiguration ? warningThresholdKey : criticalThresholdKey),
             fallback: defaultConfiguration.criticalThresholdPercent,
@@ -165,11 +165,12 @@ final class AppConfigurationStore {
         )
 
         return AppConfiguration(
-            pollingIntervalInSeconds: pollingIntervalInSeconds,
             isLaunchAtLoginEnabled: userDefaults.object(forKey: isLaunchAtLoginEnabledKey) as? Bool ?? defaultConfiguration.isLaunchAtLoginEnabled,
             enabledMetricIDs: readEnabledMetricIDs(defaultConfiguration: defaultConfiguration),
             orderedMetricIDs: readOrderedMetricIDs(defaultConfiguration: defaultConfiguration),
-            gpuPollingMultiplier: gpuPollingMultiplier,
+            pollingIntervalsByMetricID: readPollingIntervalsByMetricID(defaultConfiguration: defaultConfiguration),
+            isLowPowerModePollingAdjustmentEnabled: userDefaults.object(forKey: isLowPowerModePollingAdjustmentEnabledKey) as? Bool
+                ?? defaultConfiguration.isLowPowerModePollingAdjustmentEnabled,
             warningThresholdPercent: warningThresholdPercent,
             warningColorID: readColorID(forKey: isLegacySemanticConfiguration ? legacyYellowColorKey : warningColorKey, fallback: defaultConfiguration.warningColorID),
             criticalThresholdPercent: criticalThresholdPercent,
@@ -184,12 +185,20 @@ final class AppConfigurationStore {
     }
 
     func save(_ configuration: AppConfiguration) {
-        userDefaults.set(configuration.pollingIntervalInSeconds, forKey: pollingIntervalKey)
         userDefaults.set(configuration.isLaunchAtLoginEnabled, forKey: isLaunchAtLoginEnabledKey)
         userDefaults.set(configuration.isGpuEnabled, forKey: isGpuEnabledKey)
         userDefaults.set(Array(configuration.enabledMetricIDs), forKey: enabledMetricIDsKey)
         userDefaults.set(configuration.orderedMetricIDs, forKey: orderedMetricIDsKey)
-        userDefaults.set(configuration.gpuPollingMultiplier, forKey: gpuPollingMultiplierKey)
+        for metricConfiguration in availableMetrics {
+            userDefaults.set(
+                configuration.pollingIntervalInSeconds(metricID: metricConfiguration.id),
+                forKey: metricConfiguration.id + pollingIntervalKeySuffix
+            )
+        }
+        userDefaults.set(
+            configuration.isLowPowerModePollingAdjustmentEnabled,
+            forKey: isLowPowerModePollingAdjustmentEnabledKey
+        )
         userDefaults.set(configuration.warningThresholdPercent, forKey: warningThresholdKey)
         userDefaults.set(configuration.warningColorID, forKey: warningColorKey)
         userDefaults.set(configuration.criticalThresholdPercent, forKey: criticalThresholdKey)
@@ -225,6 +234,8 @@ final class AppConfigurationStore {
 
             if userDefaults.object(forKey: isGpuEnabledKey) as? Bool ?? defaultConfiguration.isGpuEnabled {
                 enabledMetricIDs.insert(gpuMetricID)
+            } else {
+                enabledMetricIDs.remove(gpuMetricID)
             }
 
             return enabledMetricIDs
@@ -286,40 +297,76 @@ final class AppConfigurationStore {
         )
     }
 
-    private func readGpuPollingMultiplier(pollingIntervalInSeconds: TimeInterval, fallback: Int) -> Int {
-        let maybeStoredMultiplier = userDefaults.object(forKey: gpuPollingMultiplierKey) as? Int
+    private func readPollingIntervalsByMetricID(defaultConfiguration: AppConfiguration) -> [String: TimeInterval] {
+        let maybeLegacyPollingIntervalInSeconds = readValidPollingInterval(forKey: pollingIntervalKey)
 
-        if let maybeStoredMultiplier {
-            return clamp(
-                value: maybeStoredMultiplier,
-                fallback: fallback,
-                minValue: minimumGpuPollingMultiplier,
-                maxValue: maximumGpuPollingMultiplier
+        return availableMetrics.reduce(into: [String: TimeInterval]()) { pollingIntervalsByMetricID, metricConfiguration in
+            let metricID = metricConfiguration.id
+            let fallback = getLegacyPollingInterval(
+                metricID: metricID,
+                maybeLegacyPollingIntervalInSeconds: maybeLegacyPollingIntervalInSeconds,
+                defaultConfiguration: defaultConfiguration
             )
+            pollingIntervalsByMetricID[metricID] = readValidPollingInterval(forKey: metricID + pollingIntervalKeySuffix) ?? fallback
+        }
+    }
+
+    private func getLegacyPollingInterval(
+        metricID: String,
+        maybeLegacyPollingIntervalInSeconds: TimeInterval?,
+        defaultConfiguration: AppConfiguration
+    ) -> TimeInterval {
+        guard let legacyPollingIntervalInSeconds = maybeLegacyPollingIntervalInSeconds else {
+            return defaultConfiguration.pollingIntervalInSeconds(metricID: metricID)
+        }
+
+        if metricID == ssdMetricID {
+            return defaultConfiguration.pollingIntervalInSeconds(metricID: ssdMetricID)
+        }
+
+        guard metricID == gpuMetricID else {
+            return legacyPollingIntervalInSeconds
         }
 
         let legacyGpuPollingIntervalInSeconds = userDefaults.double(forKey: legacyGpuPollingIntervalKey)
 
-        guard legacyGpuPollingIntervalInSeconds > 0, pollingIntervalInSeconds > 0 else {
-            return fallback
+        if legacyGpuPollingIntervalInSeconds.isFinite, legacyGpuPollingIntervalInSeconds >= minimumPollingIntervalInSeconds {
+            return min(legacyGpuPollingIntervalInSeconds, maximumPollingIntervalInSeconds)
         }
 
-        return clamp(
-            value: Int((legacyGpuPollingIntervalInSeconds / pollingIntervalInSeconds).rounded()),
-            fallback: fallback,
-            minValue: minimumGpuPollingMultiplier,
-            maxValue: maximumGpuPollingMultiplier
+        let legacyGpuPollingMultiplier = userDefaults.object(forKey: legacyGpuPollingMultiplierKey) as? Int ?? 2
+
+        return min(
+            legacyPollingIntervalInSeconds * TimeInterval(max(legacyGpuPollingMultiplier, 1)),
+            maximumPollingIntervalInSeconds
         )
+    }
+
+    private func readValidPollingInterval(forKey key: String) -> TimeInterval? {
+        guard userDefaults.object(forKey: key) != nil else {
+            return nil
+        }
+
+        let pollingIntervalInSeconds = userDefaults.double(forKey: key)
+
+        guard pollingIntervalInSeconds.isFinite,
+              pollingIntervalInSeconds >= minimumPollingIntervalInSeconds,
+              pollingIntervalInSeconds <= maximumPollingIntervalInSeconds
+        else {
+            return nil
+        }
+
+        return pollingIntervalInSeconds
     }
 }
 
 func makeDefaultAppConfiguration() -> AppConfiguration {
     AppConfiguration(
-        pollingIntervalInSeconds: defaultPollingIntervalInSeconds,
         isLaunchAtLoginEnabled: defaultIsLaunchAtLoginEnabled,
         enabledMetricIDs: Set(defaultEnabledMetricIDs),
         orderedMetricIDs: defaultOrderedMetricIDs,
-        gpuPollingMultiplier: defaultGpuPollingMultiplier,
+        pollingIntervalsByMetricID: defaultPollingIntervalsByMetricID,
+        isLowPowerModePollingAdjustmentEnabled: defaultIsLowPowerModePollingAdjustmentEnabled,
         warningThresholdPercent: defaultWarningThresholdPercent,
         warningColorID: defaultWarningColorID,
         criticalThresholdPercent: defaultCriticalThresholdPercent,
@@ -347,11 +394,11 @@ func getTextColorPreset(id maybeColorID: String?) -> ColorPreset? {
 
 extension AppConfiguration {
     init(
-        pollingIntervalInSeconds: TimeInterval,
         isLaunchAtLoginEnabled: Bool,
         enabledMetricIDs: Set<String>,
         orderedMetricIDs: [String],
-        gpuPollingMultiplier: Int,
+        pollingIntervalsByMetricID: [String: TimeInterval],
+        isLowPowerModePollingAdjustmentEnabled: Bool,
         warningThresholdPercent: Int,
         warningColorID: String,
         criticalThresholdPercent: Int,
@@ -363,17 +410,20 @@ extension AppConfiguration {
         isAutoTextContrastEnabled: Bool,
         colorAdjustments: [String: ColorAdjustment]
     ) {
-        self.pollingIntervalInSeconds = pollingIntervalInSeconds
         self.isLaunchAtLoginEnabled = isLaunchAtLoginEnabled
         self.enabledMetricIDs = normalizeEnabledMetricIDs(metricIDs: enabledMetricIDs)
         self.orderedMetricIDs = normalizeMetricOrder(metricIDs: orderedMetricIDs)
         isGpuEnabled = self.enabledMetricIDs.contains(gpuMetricID)
-        self.gpuPollingMultiplier = clamp(
-            value: gpuPollingMultiplier,
-            fallback: defaultGpuPollingMultiplier,
-            minValue: minimumGpuPollingMultiplier,
-            maxValue: maximumGpuPollingMultiplier
-        )
+        self.pollingIntervalsByMetricID = availableMetrics.reduce(into: [String: TimeInterval]()) { normalizedIntervalsByMetricID, metricConfiguration in
+            let fallback = defaultPollingIntervalsByMetricID[metricConfiguration.id] ?? minimumPollingIntervalInSeconds
+            normalizedIntervalsByMetricID[metricConfiguration.id] = clamp(
+                value: pollingIntervalsByMetricID[metricConfiguration.id] ?? fallback,
+                fallback: fallback,
+                minValue: minimumPollingIntervalInSeconds,
+                maxValue: maximumPollingIntervalInSeconds
+            )
+        }
+        self.isLowPowerModePollingAdjustmentEnabled = isLowPowerModePollingAdjustmentEnabled
         self.criticalThresholdPercent = clamp(value: criticalThresholdPercent, fallback: defaultCriticalThresholdPercent, minValue: minimumThresholdPercent, maxValue: maximumThresholdPercent)
         self.warningThresholdPercent = clamp(
             value: warningThresholdPercent,

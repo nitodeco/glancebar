@@ -14,73 +14,85 @@ private final class ProbeSequence<Value> {
     }
 }
 
-@Test func cachesSsdUsageForConfiguredInterval() {
+@Test func readsOnlyRequestedMetricProbe() {
+    var gpuReadCount = 0
+    var ramReadCount = 0
     var ssdReadCount = 0
+    var networkReadCount = 0
     let reader = SystemMetricsReader(
-        ssdUpdateIntervalInSeconds: 30,
         probe: SystemMetricsProbe(
-            readRamUsagePercent: { 72 },
+            readRamUsagePercent: {
+                ramReadCount += 1
+                return 72
+            },
             readSsdUsagePercent: {
                 ssdReadCount += 1
-
-                return ssdReadCount * 10
+                return 64
             },
-            readGpuUsagePercent: { 0 },
+            readGpuUsagePercent: {
+                gpuReadCount += 1
+                return 42
+            },
             readNetworkCounters: {
-                NetworkCounters(uploadBytes: 0, downloadBytes: 0)
+                networkReadCount += 1
+                return NetworkCounters(uploadBytes: 0, downloadBytes: 0)
             }
         )
     )
 
-    let firstSnapshot = reader.readSnapshot(date: Date(timeIntervalSince1970: 0))
-    let cachedSnapshot = reader.readSnapshot(date: Date(timeIntervalSince1970: 29))
-    let refreshedSnapshot = reader.readSnapshot(date: Date(timeIntervalSince1970: 30))
-
-    #expect(firstSnapshot.ramUsagePercent == 72)
-    #expect(firstSnapshot.ssdUsagePercent == 10)
-    #expect(cachedSnapshot.ssdUsagePercent == 10)
-    #expect(refreshedSnapshot.ssdUsagePercent == 20)
-    #expect(ssdReadCount == 2)
+    #expect(reader.readRamUsagePercent() == 72)
+    #expect(ramReadCount == 1)
+    #expect(gpuReadCount == 0)
+    #expect(ssdReadCount == 0)
+    #expect(networkReadCount == 0)
 }
 
-@Test func calculatesNetworkThroughputFromCounterDeltas() {
-    var networkCounters = [
+@Test func calculatesNetworkMeanFromElapsedCounterDelta() {
+    let networkCounters = ProbeSequence([
         NetworkCounters(uploadBytes: 1_000, downloadBytes: 2_000),
-        NetworkCounters(uploadBytes: 1_600, downloadBytes: 3_200)
-    ]
-    let reader = SystemMetricsReader(
-        probe: SystemMetricsProbe(
-            readRamUsagePercent: { 0 },
-            readSsdUsagePercent: { 0 },
-            readGpuUsagePercent: { 0 },
-            readNetworkCounters: {
-                networkCounters.removeFirst()
-            }
-        )
-    )
+        NetworkCounters(uploadBytes: 2_000, downloadBytes: 4_500)
+    ])
+    let reader = makeReader(readNetworkCounters: { networkCounters.next() })
 
-    let firstSnapshot = reader.readSnapshot(date: Date(timeIntervalSince1970: 0))
-    let secondSnapshot = reader.readSnapshot(date: Date(timeIntervalSince1970: 3))
+    let firstThroughput = reader.readNetworkThroughput(date: Date(timeIntervalSince1970: 0))
+    let secondThroughput = reader.readNetworkThroughput(date: Date(timeIntervalSince1970: 10))
 
-    #expect(firstSnapshot.networkUploadBytesPerSecond == 0)
-    #expect(firstSnapshot.networkDownloadBytesPerSecond == 0)
-    #expect(secondSnapshot.networkUploadBytesPerSecond == 200)
-    #expect(secondSnapshot.networkDownloadBytesPerSecond == 400)
+    #expect(firstThroughput == NetworkThroughput(uploadBytesPerSecond: 0, downloadBytesPerSecond: 0))
+    #expect(secondThroughput == NetworkThroughput(uploadBytesPerSecond: 100, downloadBytesPerSecond: 250))
 }
 
-@Test func readsGpuUsageFromProbe() {
+@Test func resetsNetworkBaselineAfterDisable() {
+    let networkCounters = ProbeSequence([
+        NetworkCounters(uploadBytes: 1_000, downloadBytes: 2_000),
+        NetworkCounters(uploadBytes: 5_000, downloadBytes: 8_000)
+    ])
+    let reader = makeReader(readNetworkCounters: { networkCounters.next() })
+
+    _ = reader.readNetworkThroughput(date: Date(timeIntervalSince1970: 0))
+    reader.resetNetworkBaseline()
+    let throughputAfterReset = reader.readNetworkThroughput(date: Date(timeIntervalSince1970: 10))
+
+    #expect(throughputAfterReset == NetworkThroughput(uploadBytesPerSecond: 0, downloadBytesPerSecond: 0))
+}
+
+@Test func returnsNilImmediatelyWhenProbeFails() {
+    let ramUsagePercents = ProbeSequence([72, nil])
+    let gpuUsagePercents = ProbeSequence([42, nil])
     let reader = SystemMetricsReader(
         probe: SystemMetricsProbe(
-            readRamUsagePercent: { 0 },
-            readSsdUsagePercent: { 0 },
-            readGpuUsagePercent: { 42 },
-            readNetworkCounters: {
-                NetworkCounters(uploadBytes: 0, downloadBytes: 0)
-            }
+            readRamUsagePercent: { ramUsagePercents.next() },
+            readSsdUsagePercent: { nil },
+            readGpuUsagePercent: { gpuUsagePercents.next() },
+            readNetworkCounters: { nil }
         )
     )
 
+    #expect(reader.readRamUsagePercent() == 72)
+    #expect(reader.readRamUsagePercent() == nil)
     #expect(reader.readGpuUsagePercent() == 42)
+    #expect(reader.readGpuUsagePercent() == nil)
+    #expect(reader.readSsdUsagePercent() == nil)
+    #expect(reader.readNetworkThroughput() == nil)
 }
 
 @Test func calculatesCpuTickDeltaAcrossSignedBoundaryAndRollover() {
@@ -100,47 +112,15 @@ private final class ProbeSequence<Value> {
     #expect(getBytesPerSecond(deltaBytes: 1_000, intervalInSeconds: .nan) == 0)
 }
 
-@Test func preservesLastSuccessfulMetricsWhenProbesFail() {
-    let ramUsagePercents = ProbeSequence([72, nil, nil])
-    let ssdUsagePercents = ProbeSequence([64, nil, nil])
-    let networkCounters = ProbeSequence([
-        NetworkCounters(uploadBytes: 1_000, downloadBytes: 2_000),
-        NetworkCounters(uploadBytes: 1_600, downloadBytes: 3_200),
-        nil
-    ])
-    let reader = SystemMetricsReader(
-        ssdUpdateIntervalInSeconds: 1,
-        probe: SystemMetricsProbe(
-            readRamUsagePercent: { ramUsagePercents.next() },
-            readSsdUsagePercent: { ssdUsagePercents.next() },
-            readGpuUsagePercent: { nil },
-            readNetworkCounters: { networkCounters.next() }
-        )
-    )
-
-    _ = reader.readSnapshot(date: Date(timeIntervalSince1970: 0))
-    let successfulSnapshot = reader.readSnapshot(date: Date(timeIntervalSince1970: 1))
-    let failedSnapshot = reader.readSnapshot(date: Date(timeIntervalSince1970: 2))
-
-    #expect(failedSnapshot.ramUsagePercent == 72)
-    #expect(failedSnapshot.ssdUsagePercent == 64)
-    #expect(failedSnapshot.networkUploadBytesPerSecond == successfulSnapshot.networkUploadBytesPerSecond)
-    #expect(failedSnapshot.networkDownloadBytesPerSecond == successfulSnapshot.networkDownloadBytesPerSecond)
-}
-
-@Test func preservesLastSuccessfulGpuMetricWhenProbeFails() {
-    let gpuUsagePercents = ProbeSequence([42, nil])
-    let reader = SystemMetricsReader(
+private func makeReader(
+    readNetworkCounters: @escaping () -> NetworkCounters?
+) -> SystemMetricsReader {
+    SystemMetricsReader(
         probe: SystemMetricsProbe(
             readRamUsagePercent: { 0 },
             readSsdUsagePercent: { 0 },
-            readGpuUsagePercent: { gpuUsagePercents.next() },
-            readNetworkCounters: {
-                NetworkCounters(uploadBytes: 0, downloadBytes: 0)
-            }
+            readGpuUsagePercent: { 0 },
+            readNetworkCounters: readNetworkCounters
         )
     )
-
-    #expect(reader.readGpuUsagePercent() == 42)
-    #expect(reader.readGpuUsagePercent() == 42)
 }

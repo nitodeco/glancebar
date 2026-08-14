@@ -25,20 +25,13 @@ final class StatusMetricsView: NSView {
         }
     }
 
-    var snapshot = MetricsSnapshot(
-        cpuUsagePercent: 0,
-        gpuUsagePercent: nil,
-        ramUsagePercent: 0,
-        ssdUsagePercent: 0,
-        networkUploadBytesPerSecond: 0,
-        networkDownloadBytesPerSecond: 0
-    ) {
+    var snapshot = MetricsSnapshot() {
         didSet {
             needsDisplay = true
         }
     }
 
-    var adaptiveTextColor: NSColor? {
+    var adaptiveColorsByRoleID: [String: NSColor] = [:] {
         didSet {
             needsDisplay = true
         }
@@ -83,26 +76,25 @@ final class StatusMetricsView: NSView {
 
     private func drawMetric(metricID: String, x: CGFloat) {
         if metricID == cpuMetricID {
-            drawColumn(label: "CPU", value: "\(snapshot.cpuUsagePercent)%", percent: snapshot.cpuUsagePercent, x: x)
+            drawColumn(label: "CPU", percent: snapshot.cpuUsagePercent, x: x)
 
             return
         }
 
         if metricID == gpuMetricID {
-            let gpuUsagePercent = snapshot.gpuUsagePercent ?? 0
-            drawColumn(label: "GPU", value: "\(gpuUsagePercent)%", percent: gpuUsagePercent, x: x)
+            drawColumn(label: "GPU", percent: snapshot.gpuUsagePercent, x: x)
 
             return
         }
 
         if metricID == ramMetricID {
-            drawColumn(label: "RAM", value: "\(snapshot.ramUsagePercent)%", percent: snapshot.ramUsagePercent, x: x)
+            drawColumn(label: "RAM", percent: snapshot.ramUsagePercent, x: x)
 
             return
         }
 
         if metricID == ssdMetricID {
-            drawColumn(label: "SSD", value: "\(snapshot.ssdUsagePercent)%", percent: snapshot.ssdUsagePercent, x: x)
+            drawColumn(label: "SSD", percent: snapshot.ssdUsagePercent, x: x)
 
             return
         }
@@ -110,18 +102,24 @@ final class StatusMetricsView: NSView {
         drawNetwork(x: x)
     }
 
-    private func drawColumn(label: String, value: String, percent: Int, x: CGFloat) {
+    private func drawColumn(label: String, percent: Int?, x: CGFloat) {
         let labelAttributes: [NSAttributedString.Key: Any] = [
             .font: getLabelFont(),
-            .foregroundColor: getDrawableColor(adaptiveTextColor ?? configuration.labelTextColor)
+            .foregroundColor: getDrawableColor(
+                adaptiveColorsByRoleID[labelTextColorKey] ?? configuration.labelTextColor
+            )
         ]
         let valueAttributes: [NSAttributedString.Key: Any] = [
             .font: getValueFont(),
-            .foregroundColor: getDrawableColor(getValueColor(percent: percent))
+            .foregroundColor: getDrawableColor(
+                percent.map(getValueColor)
+                    ?? adaptiveColorsByRoleID[baseTextColorKey]
+                    ?? configuration.baseTextColor
+            )
         ]
 
         label.draw(at: NSPoint(x: x, y: labelY), withAttributes: labelAttributes)
-        value.draw(at: NSPoint(x: x, y: valueY), withAttributes: valueAttributes)
+        formatPercentage(percent).draw(at: NSPoint(x: x, y: valueY), withAttributes: valueAttributes)
     }
 
     private func drawNetwork(x: CGFloat) {
@@ -134,22 +132,45 @@ final class StatusMetricsView: NSView {
         let unitAttributes: [NSAttributedString.Key: Any] = [
             .font: getNetworkFont()
         ]
-        let upload = ByteFormatter.formatThroughputParts(bytesPerSecond: snapshot.networkUploadBytesPerSecond)
-        let download = ByteFormatter.formatThroughputParts(bytesPerSecond: snapshot.networkDownloadBytesPerSecond)
-
-        drawNetworkRow(
-            throughputFormat: upload,
+        drawNetworkValue(
+            maybeBytesPerSecond: snapshot.networkUploadBytesPerSecond,
             x: x,
             y: labelY,
-            color: configuration.uploadColor,
+            color: adaptiveColorsByRoleID[uploadColorKey] ?? configuration.uploadColor,
             valueAttributes: valueAttributes,
             unitAttributes: unitAttributes
         )
-        drawNetworkRow(
-            throughputFormat: download,
+        drawNetworkValue(
+            maybeBytesPerSecond: snapshot.networkDownloadBytesPerSecond,
             x: x,
             y: valueY,
-            color: configuration.downloadColor,
+            color: adaptiveColorsByRoleID[downloadColorKey] ?? configuration.downloadColor,
+            valueAttributes: valueAttributes,
+            unitAttributes: unitAttributes
+        )
+    }
+
+    private func drawNetworkValue(
+        maybeBytesPerSecond: UInt64?,
+        x: CGFloat,
+        y: CGFloat,
+        color: NSColor,
+        valueAttributes: [NSAttributedString.Key: Any],
+        unitAttributes: [NSAttributedString.Key: Any]
+    ) {
+        guard let bytesPerSecond = maybeBytesPerSecond else {
+            "-".draw(
+                in: NSRect(x: x, y: y, width: networkValueWidth, height: networkFontSize + 2),
+                withAttributes: valueAttributes.merging([.foregroundColor: getDrawableColor(color)]) { firstValue, _ in firstValue }
+            )
+            return
+        }
+
+        drawNetworkRow(
+            throughputFormat: ByteFormatter.formatThroughputParts(bytesPerSecond: bytesPerSecond),
+            x: x,
+            y: y,
+            color: color,
             valueAttributes: valueAttributes,
             unitAttributes: unitAttributes
         )
@@ -175,14 +196,14 @@ final class StatusMetricsView: NSView {
 
     private func getValueColor(percent: Int) -> NSColor {
         if percent > configuration.criticalThresholdPercent {
-            return configuration.criticalColor
+            return adaptiveColorsByRoleID[criticalColorKey] ?? configuration.criticalColor
         }
 
         if percent > configuration.warningThresholdPercent {
-            return configuration.warningColor
+            return adaptiveColorsByRoleID[warningColorKey] ?? configuration.warningColor
         }
 
-        return adaptiveTextColor ?? configuration.baseTextColor
+        return adaptiveColorsByRoleID[baseTextColorKey] ?? configuration.baseTextColor
     }
 
     private func getDrawableColor(_ color: NSColor) -> NSColor {
@@ -200,4 +221,8 @@ final class StatusMetricsView: NSView {
     private func getNetworkFont() -> NSFont {
         NSFont(name: "Menlo", size: networkFontSize) ?? NSFont.monospacedDigitSystemFont(ofSize: networkFontSize, weight: .medium)
     }
+}
+
+func formatPercentage(_ percent: Int?) -> String {
+    percent.map { "\($0)%" } ?? "-"
 }

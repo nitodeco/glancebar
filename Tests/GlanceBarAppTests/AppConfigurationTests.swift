@@ -17,9 +17,9 @@ private func makeTestUserDefaults() throws -> (userDefaults: UserDefaults, suite
         userDefaults.removePersistentDomain(forName: suiteName)
     }
 
-    userDefaults.set(Double.nan, forKey: "pollingIntervalInSeconds")
+    userDefaults.set(Double.nan, forKey: "cpuPollingIntervalInSeconds")
 
-    #expect(AppConfigurationStore(userDefaults: userDefaults).load().pollingIntervalInSeconds == 3)
+    #expect(AppConfigurationStore(userDefaults: userDefaults).load().pollingIntervalInSeconds(metricID: cpuMetricID) == 3)
 }
 
 @MainActor
@@ -32,8 +32,12 @@ private func makeTestUserDefaults() throws -> (userDefaults: UserDefaults, suite
     let configuration = AppConfigurationStore(userDefaults: userDefaults).load()
 
     #expect(configuration.isLaunchAtLoginEnabled)
-    #expect(configuration.pollingIntervalInSeconds == 3)
-    #expect(configuration.gpuPollingMultiplier == 2)
+    #expect(configuration.pollingIntervalInSeconds(metricID: cpuMetricID) == 3)
+    #expect(configuration.pollingIntervalInSeconds(metricID: gpuMetricID) == 9)
+    #expect(configuration.pollingIntervalInSeconds(metricID: ramMetricID) == 3)
+    #expect(configuration.pollingIntervalInSeconds(metricID: ssdMetricID) == 30)
+    #expect(configuration.pollingIntervalInSeconds(metricID: networkMetricID) == 10)
+    #expect(configuration.isLowPowerModePollingAdjustmentEnabled)
     #expect(configuration.warningThresholdPercent == 75)
     #expect(configuration.criticalThresholdPercent == 90)
     #expect(configuration.enabledMetricIDs == Set([cpuMetricID, gpuMetricID, ramMetricID, ssdMetricID, networkMetricID]))
@@ -45,6 +49,25 @@ private func makeTestUserDefaults() throws -> (userDefaults: UserDefaults, suite
     #expect(configuration.baseTextColorID == "white")
     #expect(configuration.labelTextColorID == "white")
     #expect(configuration.isAutoTextContrastEnabled)
+}
+
+@MainActor
+@Test func migratesLegacyPollingConfiguration() throws {
+    let (userDefaults, suiteName) = try makeTestUserDefaults()
+    defer {
+        userDefaults.removePersistentDomain(forName: suiteName)
+    }
+
+    userDefaults.set(4.0, forKey: "pollingIntervalInSeconds")
+    userDefaults.set(3, forKey: "gpuPollingMultiplier")
+
+    let configuration = AppConfigurationStore(userDefaults: userDefaults).load()
+
+    #expect(configuration.pollingIntervalInSeconds(metricID: cpuMetricID) == 4)
+    #expect(configuration.pollingIntervalInSeconds(metricID: gpuMetricID) == 12)
+    #expect(configuration.pollingIntervalInSeconds(metricID: ramMetricID) == 4)
+    #expect(configuration.pollingIntervalInSeconds(metricID: ssdMetricID) == 30)
+    #expect(configuration.pollingIntervalInSeconds(metricID: networkMetricID) == 4)
 }
 
 @MainActor
@@ -80,11 +103,17 @@ private func makeTestUserDefaults() throws -> (userDefaults: UserDefaults, suite
 
     let defaultConfiguration = makeDefaultAppConfiguration()
     let configuration = AppConfiguration(
-        pollingIntervalInSeconds: defaultConfiguration.pollingIntervalInSeconds,
         isLaunchAtLoginEnabled: defaultConfiguration.isLaunchAtLoginEnabled,
         enabledMetricIDs: defaultConfiguration.enabledMetricIDs,
         orderedMetricIDs: defaultConfiguration.orderedMetricIDs,
-        gpuPollingMultiplier: defaultConfiguration.gpuPollingMultiplier,
+        pollingIntervalsByMetricID: [
+            cpuMetricID: 2,
+            gpuMetricID: 8,
+            ramMetricID: 4,
+            ssdMetricID: 40,
+            networkMetricID: 12
+        ],
+        isLowPowerModePollingAdjustmentEnabled: false,
         warningThresholdPercent: 70,
         warningColorID: "orange",
         criticalThresholdPercent: 95,
@@ -105,4 +134,23 @@ private func makeTestUserDefaults() throws -> (userDefaults: UserDefaults, suite
     #expect(persistedConfiguration.criticalThresholdPercent == 95)
     #expect(persistedConfiguration.warningColorID == "orange")
     #expect(persistedConfiguration.criticalColorID == "purple")
+    #expect(persistedConfiguration.pollingIntervalInSeconds(metricID: cpuMetricID) == 2)
+    #expect(persistedConfiguration.pollingIntervalInSeconds(metricID: gpuMetricID) == 8)
+    #expect(persistedConfiguration.pollingIntervalInSeconds(metricID: ramMetricID) == 4)
+    #expect(persistedConfiguration.pollingIntervalInSeconds(metricID: ssdMetricID) == 40)
+    #expect(persistedConfiguration.pollingIntervalInSeconds(metricID: networkMetricID) == 12)
+    #expect(!persistedConfiguration.isLowPowerModePollingAdjustmentEnabled)
+}
+
+@MainActor
+@Test func preservesDisabledGpuFromLegacyConfiguration() throws {
+    let (userDefaults, suiteName) = try makeTestUserDefaults()
+    defer {
+        userDefaults.removePersistentDomain(forName: suiteName)
+    }
+    userDefaults.set(false, forKey: "isGpuEnabled")
+
+    let configuration = AppConfigurationStore(userDefaults: userDefaults).load()
+
+    #expect(!configuration.enabledMetricIDs.contains(gpuMetricID))
 }

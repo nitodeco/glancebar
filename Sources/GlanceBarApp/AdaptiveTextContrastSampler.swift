@@ -2,90 +2,87 @@ import AppKit
 import CoreGraphics
 
 private let adaptiveContrastMinimumSampleIntervalInSeconds: TimeInterval = 5
-private let adaptiveContrastLuminanceThreshold = 0.56
-private let adaptiveContrastDarkTextColor = NSColor(srgbRed: 0.03, green: 0.03, blue: 0.035, alpha: 1)
-private let adaptiveContrastLightTextColor = NSColor.white
 private let adaptiveContrastMaxColorByte = 255.0
 private let adaptiveContrastSampleGutterWidthInPoints: CGFloat = 18
 private let adaptiveContrastMinimumWallpaperCropSizeInPixels = 1.0
+private let adaptiveContrastDarkAppearanceBackground = NSColor(
+    srgbRed: 0.12,
+    green: 0.12,
+    blue: 0.13,
+    alpha: 1
+)
+private let adaptiveContrastLightAppearanceBackground = NSColor(
+    srgbRed: 0.92,
+    green: 0.92,
+    blue: 0.93,
+    alpha: 1
+)
 
 @MainActor
 final class AdaptiveTextContrastSampler {
     private var lastSampleDate = Date.distantPast
-    private var cachedTextColor: NSColor?
+    private var cachedBackgroundColor: NSColor?
 
     func reset() {
         lastSampleDate = .distantPast
-        cachedTextColor = nil
+        cachedBackgroundColor = nil
     }
 
-    func sampleTextColor(statusButton: NSStatusBarButton?, force: Bool = false) -> NSColor? {
+    func sampleBackgroundColor(statusButton: NSStatusBarButton?, force: Bool = false) -> NSColor? {
         let now = Date()
 
         if !force, now.timeIntervalSince(lastSampleDate) < adaptiveContrastMinimumSampleIntervalInSeconds {
-            return cachedTextColor
+            return cachedBackgroundColor
         }
 
         lastSampleDate = now
 
         guard let statusButton, let window = statusButton.window, let screen = window.screen else {
-            cachedTextColor = nil
+            cachedBackgroundColor = nil
             return nil
-        }
-
-        if let appearanceTextColor = getAppearanceTextColor(statusButton: statusButton) {
-            cachedTextColor = appearanceTextColor
-            return cachedTextColor
         }
 
         let statusItemRect = window.convertToScreen(statusButton.bounds)
-        if let wallpaperTextColor = getWallpaperTextColor(statusItemRect: statusItemRect, screen: screen) {
-            cachedTextColor = wallpaperTextColor
-            return cachedTextColor
+
+        if let screenColor = getScreenColor(statusItemRect: statusItemRect, screen: screen) {
+            cachedBackgroundColor = screenColor
+            return screenColor
         }
 
-        guard let displayIDNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+        if let wallpaperColor = getWallpaperColor(statusItemRect: statusItemRect, screen: screen) {
+            cachedBackgroundColor = wallpaperColor
+            return wallpaperColor
+        }
+
+        cachedBackgroundColor = getAppearanceBackgroundColor(statusButton: statusButton)
+        return cachedBackgroundColor
+    }
+
+    private func getScreenColor(statusItemRect: CGRect, screen: NSScreen) -> NSColor? {
+        guard CGPreflightScreenCaptureAccess(),
+              let displayIDNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
               let displayID = UInt32(exactly: displayIDNumber.int64Value)
         else {
-            cachedTextColor = nil
             return nil
         }
 
-        guard CGPreflightScreenCaptureAccess() else {
-            cachedTextColor = nil
-            return nil
-        }
-
-        let sampleRects = getSampleRects(statusItemRect: statusItemRect, screen: screen)
+        let images = getSampleRects(statusItemRect: statusItemRect, screen: screen)
             .compactMap { sampleRect in
                 getDisplayPixelRect(sampleRect: sampleRect, screen: screen)
             }
+            .compactMap { sampleRect in
+                CGDisplayCreateImage(CGDirectDisplayID(displayID), rect: sampleRect)
+            }
 
-        guard !sampleRects.isEmpty else {
-            cachedTextColor = nil
-            return nil
-        }
-
-        let samples = sampleRects.compactMap { sampleRect in
-            CGDisplayCreateImage(CGDirectDisplayID(displayID), rect: sampleRect)
-        }
-
-        cachedTextColor = getTextColor(images: samples)
-        return cachedTextColor
+        return getAverageColor(images: images)
     }
 
-    private func getAppearanceTextColor(statusButton: NSStatusBarButton) -> NSColor? {
-        let appearanceName = statusButton.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])
-
-        if appearanceName == .darkAqua {
-            return adaptiveContrastLightTextColor
+    private func getAppearanceBackgroundColor(statusButton: NSStatusBarButton) -> NSColor {
+        if statusButton.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua {
+            return adaptiveContrastDarkAppearanceBackground
         }
 
-        if appearanceName == .aqua {
-            return adaptiveContrastDarkTextColor
-        }
-
-        return nil
+        return adaptiveContrastLightAppearanceBackground
     }
 
     private func getSampleRects(statusItemRect: CGRect, screen: NSScreen) -> [CGRect] {
@@ -113,11 +110,7 @@ final class AdaptiveTextContrastSampler {
             sampleRect.width > 0 && sampleRect.height > 0
         }
 
-        if sampleRects.isEmpty {
-            return [fallbackRect]
-        }
-
-        return sampleRects
+        return sampleRects.isEmpty ? [fallbackRect] : sampleRects
     }
 
     private func getDisplayPixelRect(sampleRect: CGRect, screen: NSScreen) -> CGRect? {
@@ -135,14 +128,10 @@ final class AdaptiveTextContrastSampler {
             && displayRect.width > 0
             && displayRect.height > 0
 
-        if !isDisplayRectUsable {
-            return nil
-        }
-
-        return displayRect
+        return isDisplayRectUsable ? displayRect : nil
     }
 
-    private func getWallpaperTextColor(statusItemRect: CGRect, screen: NSScreen) -> NSColor? {
+    private func getWallpaperColor(statusItemRect: CGRect, screen: NSScreen) -> NSColor? {
         guard let wallpaperURL = NSWorkspace.shared.desktopImageURL(for: screen),
               let wallpaperImage = NSImage(contentsOf: wallpaperURL),
               let wallpaperCGImage = wallpaperImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
@@ -156,8 +145,10 @@ final class AdaptiveTextContrastSampler {
             width: wallpaperSize.width * wallpaperScale,
             height: wallpaperSize.height * wallpaperScale
         )
-        let hiddenWallpaperWidthInPixels = max(0, displayedWallpaperSize.width - screen.frame.width) / (2 * wallpaperScale)
-        let hiddenWallpaperHeightInPixels = max(0, displayedWallpaperSize.height - screen.frame.height) / (2 * wallpaperScale)
+        let hiddenWallpaperWidthInPixels = max(0, displayedWallpaperSize.width - screen.frame.width)
+            / (2 * wallpaperScale)
+        let hiddenWallpaperHeightInPixels = max(0, displayedWallpaperSize.height - screen.frame.height)
+            / (2 * wallpaperScale)
         let statusItemRectFromTop = CGRect(
             x: statusItemRect.minX - screen.frame.minX,
             y: screen.frame.maxY - statusItemRect.maxY,
@@ -184,10 +175,10 @@ final class AdaptiveTextContrastSampler {
             return nil
         }
 
-        return getTextColor(images: [wallpaperCrop])
+        return getAverageColor(images: [wallpaperCrop])
     }
 
-    private func getTextColor(images: [CGImage]) -> NSColor? {
+    private func getAverageColor(images: [CGImage]) -> NSColor? {
         let pixels = images.compactMap { image in
             getAveragePixel(image: image)
         }
@@ -196,8 +187,7 @@ final class AdaptiveTextContrastSampler {
             return nil
         }
 
-        let initialColorTotals: (red: Double, green: Double, blue: Double) = (red: 0, green: 0, blue: 0)
-        let colorTotals = pixels.reduce(initialColorTotals) { colorTotals, pixel in
+        let colorTotals = pixels.reduce((red: 0.0, green: 0.0, blue: 0.0)) { colorTotals, pixel in
             (
                 red: colorTotals.red + pixel.red,
                 green: colorTotals.green + pixel.green,
@@ -205,23 +195,20 @@ final class AdaptiveTextContrastSampler {
             )
         }
         let sampleCount = Double(pixels.count)
-        let red = colorTotals.red / sampleCount
-        let green = colorTotals.green / sampleCount
-        let blue = colorTotals.blue / sampleCount
-        let luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
 
-        if luminance > adaptiveContrastLuminanceThreshold {
-            return adaptiveContrastDarkTextColor
-        }
-
-        return adaptiveContrastLightTextColor
+        return NSColor(
+            srgbRed: colorTotals.red / sampleCount,
+            green: colorTotals.green / sampleCount,
+            blue: colorTotals.blue / sampleCount,
+            alpha: 1
+        )
     }
 
     private func getAveragePixel(image: CGImage) -> (red: Double, green: Double, blue: Double)? {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         var pixel = [UInt8](repeating: 0, count: 4)
         let hasSampledPixel = pixel.withUnsafeMutableBytes { pixelBytes in
-            guard let maybeContext = CGContext(
+            guard let context = CGContext(
                 data: pixelBytes.baseAddress,
                 width: 1,
                 height: 1,
@@ -233,8 +220,8 @@ final class AdaptiveTextContrastSampler {
                 return false
             }
 
-            maybeContext.interpolationQuality = .low
-            maybeContext.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            context.interpolationQuality = .low
+            context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
 
             return true
         }
@@ -244,13 +231,11 @@ final class AdaptiveTextContrastSampler {
         }
 
         var pixelIterator = pixel.makeIterator()
-        let redByte = pixelIterator.next() ?? 0
-        let greenByte = pixelIterator.next() ?? 0
-        let blueByte = pixelIterator.next() ?? 0
-        let red = Double(redByte) / adaptiveContrastMaxColorByte
-        let green = Double(greenByte) / adaptiveContrastMaxColorByte
-        let blue = Double(blueByte) / adaptiveContrastMaxColorByte
 
-        return (red: red, green: green, blue: blue)
+        return (
+            red: Double(pixelIterator.next() ?? 0) / adaptiveContrastMaxColorByte,
+            green: Double(pixelIterator.next() ?? 0) / adaptiveContrastMaxColorByte,
+            blue: Double(pixelIterator.next() ?? 0) / adaptiveContrastMaxColorByte
+        )
     }
 }

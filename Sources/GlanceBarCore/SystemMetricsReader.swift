@@ -15,79 +15,43 @@ public final class SystemMetricsReader {
     private var maybePreviousCpuTicks: [UInt32]?
     private var maybePreviousNetworkCounters: NetworkCounters?
     private var maybePreviousNetworkDate: Date?
-    private var cachedCpuUsagePercent = 0
-    private var cachedGpuUsagePercent = 0
-    private var cachedRamUsagePercent = 0
-    private var cachedSsdUsagePercent: Int = 0
-    private var cachedNetworkThroughput = NetworkThroughput(uploadBytesPerSecond: 0, downloadBytesPerSecond: 0)
-    private var lastSsdUpdateDate: Date = .distantPast
     private var failedMetricProbeIDs: Set<MetricProbeID> = []
-    private let ssdUpdateIntervalInSeconds: TimeInterval
     private let probe: SystemMetricsProbe
 
-    public init(ssdUpdateIntervalInSeconds: TimeInterval = 30) {
-        self.ssdUpdateIntervalInSeconds = ssdUpdateIntervalInSeconds
+    public init() {
         probe = makeLiveSystemMetricsProbe()
     }
 
-    init(ssdUpdateIntervalInSeconds: TimeInterval = 30, probe: SystemMetricsProbe) {
-        self.ssdUpdateIntervalInSeconds = ssdUpdateIntervalInSeconds
+    init(probe: SystemMetricsProbe) {
         self.probe = probe
     }
 
-    public func readSnapshot(date: Date = Date()) -> MetricsSnapshot {
-        if let cpuUsagePercent = readCpuUsagePercent() {
-            cachedCpuUsagePercent = cpuUsagePercent
-            recordProbeRecovery(metricProbeID: .cpu)
-        } else {
-            recordProbeFailure(metricProbeID: .cpu)
-        }
-
-        if let ramUsagePercent = probe.readRamUsagePercent() {
-            cachedRamUsagePercent = ramUsagePercent
-            recordProbeRecovery(metricProbeID: .ram)
-        } else {
-            recordProbeFailure(metricProbeID: .ram)
-        }
-
-        if let networkThroughput = readNetworkThroughput(date: date) {
-            cachedNetworkThroughput = networkThroughput
-            recordProbeRecovery(metricProbeID: .network)
-        } else {
-            recordProbeFailure(metricProbeID: .network)
-        }
-
-        if date.timeIntervalSince(lastSsdUpdateDate) >= ssdUpdateIntervalInSeconds {
-            if let ssdUsagePercent = probe.readSsdUsagePercent() {
-                cachedSsdUsagePercent = ssdUsagePercent
-                lastSsdUpdateDate = date
-                recordProbeRecovery(metricProbeID: .ssd)
-            } else {
-                recordProbeFailure(metricProbeID: .ssd)
-            }
-        }
-
-        return MetricsSnapshot(
-            cpuUsagePercent: cachedCpuUsagePercent,
-            ramUsagePercent: cachedRamUsagePercent,
-            ssdUsagePercent: cachedSsdUsagePercent,
-            networkUploadBytesPerSecond: cachedNetworkThroughput.uploadBytesPerSecond,
-            networkDownloadBytesPerSecond: cachedNetworkThroughput.downloadBytesPerSecond
-        )
+    public func readCpuUsagePercent() -> Int? {
+        recordProbeResult(metricProbeID: .cpu, value: readRawCpuUsagePercent())
     }
 
-    public func readGpuUsagePercent() -> Int {
-        if let gpuUsagePercent = probe.readGpuUsagePercent() {
-            cachedGpuUsagePercent = gpuUsagePercent
-            recordProbeRecovery(metricProbeID: .gpu)
-        } else {
-            recordProbeFailure(metricProbeID: .gpu)
-        }
-
-        return cachedGpuUsagePercent
+    public func readGpuUsagePercent() -> Int? {
+        recordProbeResult(metricProbeID: .gpu, value: probe.readGpuUsagePercent())
     }
 
-    private func readCpuUsagePercent() -> Int? {
+    public func readRamUsagePercent() -> Int? {
+        recordProbeResult(metricProbeID: .ram, value: probe.readRamUsagePercent())
+    }
+
+    public func readSsdUsagePercent() -> Int? {
+        recordProbeResult(metricProbeID: .ssd, value: probe.readSsdUsagePercent())
+    }
+
+    public func readNetworkThroughput(date: Date = Date()) -> NetworkThroughput? {
+        recordProbeResult(metricProbeID: .network, value: readRawNetworkThroughput(date: date))
+    }
+
+    public func resetNetworkBaseline() {
+        maybePreviousNetworkCounters = nil
+        maybePreviousNetworkDate = nil
+    }
+
+    private func readRawCpuUsagePercent() -> Int? {
         var cpuInfo: processor_info_array_t?
         var processorCount: mach_msg_type_number_t = 0
         var cpuInfoCount: mach_msg_type_number_t = 0
@@ -179,7 +143,7 @@ public final class SystemMetricsReader {
         return clampPercent(Int((usage * 100).rounded()))
     }
 
-    private func readNetworkThroughput(date: Date) -> NetworkThroughput? {
+    private func readRawNetworkThroughput(date: Date) -> NetworkThroughput? {
         guard let counters = probe.readNetworkCounters() else {
             return nil
         }
@@ -225,6 +189,16 @@ public final class SystemMetricsReader {
 
         NSLog("Metric probe recovered: %@", metricProbeID.rawValue)
     }
+
+    private func recordProbeResult<Value>(metricProbeID: MetricProbeID, value: Value?) -> Value? {
+        if value == nil {
+            recordProbeFailure(metricProbeID: metricProbeID)
+        } else {
+            recordProbeRecovery(metricProbeID: metricProbeID)
+        }
+
+        return value
+    }
 }
 
 struct SystemMetricsProbe {
@@ -239,9 +213,14 @@ struct NetworkCounters {
     let downloadBytes: UInt64
 }
 
-struct NetworkThroughput {
-    let uploadBytesPerSecond: UInt64
-    let downloadBytesPerSecond: UInt64
+public struct NetworkThroughput: Equatable, Sendable {
+    public let uploadBytesPerSecond: UInt64
+    public let downloadBytesPerSecond: UInt64
+
+    public init(uploadBytesPerSecond: UInt64, downloadBytesPerSecond: UInt64) {
+        self.uploadBytesPerSecond = uploadBytesPerSecond
+        self.downloadBytesPerSecond = downloadBytesPerSecond
+    }
 }
 
 private struct CpuUsage {

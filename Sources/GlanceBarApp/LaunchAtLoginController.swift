@@ -3,9 +3,10 @@ import ServiceManagement
 
 @MainActor
 final class LaunchAtLoginController {
-    func apply(isEnabled: Bool) {
+    @discardableResult
+    func apply(isEnabled: Bool) -> Bool {
         guard #available(macOS 13.0, *) else {
-            return
+            return true
         }
 
         do {
@@ -16,8 +17,11 @@ final class LaunchAtLoginController {
             if !isEnabled, SMAppService.mainApp.status == .enabled {
                 try SMAppService.mainApp.unregister()
             }
+
+            return true
         } catch {
             NSLog("Failed to update launch at login: \(error.localizedDescription)")
+            return false
         }
     }
 }

@@ -17,13 +17,22 @@ let package = Package(
             targets: ["GlanceBarCore"]
         )
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.4")
+    ],
     targets: [
         .target(
             name: "GlanceBarCore"
         ),
         .executableTarget(
             name: "GlanceBarApp",
-            dependencies: ["GlanceBarCore"]
+            dependencies: [
+                "GlanceBarCore",
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../Frameworks"])
+            ]
         ),
         .testTarget(
             name: "GlanceBarCoreTests",
