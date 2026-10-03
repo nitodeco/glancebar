@@ -407,7 +407,7 @@ function renderStatusMenu() {
   menuEntries.push(
     "separator",
     { title: "Settings", shortcut: "⌘,", onSelect: () => showWindow("settings") },
-    { title: "Quit", shortcut: "⌘Q", onSelect: () => stopApp("quit") },
+    { title: "Quit", shortcut: "⌘Q", onSelect: () => stopApp() },
   );
 
   statusMenu.replaceChildren(
@@ -452,21 +452,13 @@ const appStatusNotice = document.querySelector("[data-app-status-notice]");
 const appStatusMessage = document.querySelector("[data-app-status-message]");
 const relaunchButton = document.querySelector("[data-relaunch-app]");
 
-function stopApp(nextAppStatus) {
-  appStatus = nextAppStatus;
+function stopApp() {
+  appStatus = "quit";
   closeWindow("settings");
   closeWindow("color-editor");
 
-  if (nextAppStatus === "uninstalled") {
-    configuration = makeDefaultConfiguration();
-    try {
-      localStorage.removeItem(settingsStorageKey);
-    } catch {}
-    syncSettings();
-  }
-
-  appStatusMessage.textContent = nextAppStatus === "uninstalled" ? "GlanceBar was uninstalled." : "GlanceBar is not running.";
-  relaunchButton.textContent = nextAppStatus === "uninstalled" ? "Reinstall" : "Open GlanceBar";
+  appStatusMessage.textContent = "GlanceBar is not running.";
+  relaunchButton.textContent = "Open GlanceBar";
   appStatusNotice.hidden = false;
   restartPolling();
   renderStatusItem();
@@ -653,9 +645,6 @@ function buildSettings() {
   const generalPanel = document.querySelector('[data-panel="general"]');
   const metricsPanel = document.querySelector('[data-panel="metrics"]');
   const colorsPanel = document.querySelector('[data-panel="colors"]');
-  const uninstallButton = createElement("button", "mac-button settings-uninstall", "Uninstall");
-  uninstallButton.type = "button";
-  uninstallButton.addEventListener("click", () => stopApp("uninstalled"));
 
   generalPanel.append(
     makeCheckboxRow({
@@ -685,7 +674,6 @@ function buildSettings() {
       readMaximum: () => maximumThresholdPercent,
     }),
     makeMetricList(),
-    uninstallButton,
   );
 
   metricsPanel.append(

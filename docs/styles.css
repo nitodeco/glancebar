@@ -852,11 +852,6 @@ input[type="checkbox"] {
   background: #0066dd;
 }
 
-.settings-uninstall {
-  align-self: flex-end;
-  margin-top: auto;
-}
-
 .color-select {
   position: relative;
   display: inline-flex;
