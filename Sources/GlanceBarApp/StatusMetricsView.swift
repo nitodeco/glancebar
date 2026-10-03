@@ -12,7 +12,35 @@ private let networkFontSize: CGFloat = 9
 private let networkValueWidth: CGFloat = 32
 private let networkUnitXOffset: CGFloat = 36
 
-final class StatusMetricsView: NSView {
+private struct RenderedMetricColumn: Equatable {
+    let metricID: String
+    let rect: NSRect
+    let values: [String]
+    let colors: [NSColor]
+}
+
+class StatusMetricsView: NSView {
+    private var renderedColumns: [RenderedMetricColumn] = []
+    private lazy var labelFont = getLabelFont()
+    private lazy var valueFont = getValueFont()
+    private lazy var networkFont = getNetworkFont()
+    private lazy var networkParagraphStyle: NSParagraphStyle = {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .right
+
+        return paragraphStyle
+    }()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        updateRenderedColumns()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
     static func preferredSize(configuration: AppConfiguration) -> NSSize {
         NSSize(width: max(1, getEnabledMetrics(configuration: configuration).reduce(CGFloat(0)) { width, metricConfiguration in
             width + getMetricWidth(metricID: metricConfiguration.id) + metricColumnSpacing
@@ -21,19 +49,23 @@ final class StatusMetricsView: NSView {
 
     var configuration = makeDefaultAppConfiguration() {
         didSet {
-            needsDisplay = true
+            updateRenderedColumns()
         }
     }
 
     var snapshot = MetricsSnapshot() {
         didSet {
-            needsDisplay = true
+            if snapshot != oldValue {
+                updateRenderedColumns()
+            }
         }
     }
 
     var adaptiveColorsByRoleID: [String: NSColor] = [:] {
         didSet {
-            needsDisplay = true
+            if adaptiveColorsByRoleID != oldValue {
+                updateRenderedColumns()
+            }
         }
     }
 
@@ -48,12 +80,75 @@ final class StatusMetricsView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
+        for column in renderedColumns where needsToDraw(column.rect) {
+            drawMetric(metricID: column.metricID, x: column.rect.minX)
+        }
+    }
+
+    private func updateRenderedColumns() {
+        let previousColumns = renderedColumns
         var metricX: CGFloat = 0
+        var updatedColumns: [RenderedMetricColumn] = []
 
         for metricConfiguration in Self.getEnabledMetrics(configuration: configuration) {
-            drawMetric(metricID: metricConfiguration.id, x: metricX)
-            metricX += Self.getMetricWidth(metricID: metricConfiguration.id) + metricColumnSpacing
+            let metricID = metricConfiguration.id
+            let columnRect = NSRect(x: metricX, y: 0, width: Self.getMetricWidth(metricID: metricID), height: 24)
+            let column = getRenderedColumn(metricID: metricID, rect: columnRect)
+            updatedColumns.append(column)
+
+            if !previousColumns.contains(column) {
+                setNeedsDisplay(columnRect)
+            }
+
+            metricX += columnRect.width + metricColumnSpacing
         }
+
+        for previousColumn in previousColumns {
+            if !updatedColumns.contains(where: { $0.rect == previousColumn.rect }) {
+                setNeedsDisplay(previousColumn.rect)
+            }
+        }
+
+        renderedColumns = updatedColumns
+    }
+
+    private func getRenderedColumn(metricID: String, rect: NSRect) -> RenderedMetricColumn {
+        if metricID == networkMetricID {
+            return RenderedMetricColumn(
+                metricID: metricID,
+                rect: rect,
+                values: [
+                    snapshot.networkUploadBytesPerSecond.map { ByteFormatter.formatThroughput(bytesPerSecond: $0) } ?? "-",
+                    snapshot.networkDownloadBytesPerSecond.map { ByteFormatter.formatThroughput(bytesPerSecond: $0) } ?? "-"
+                ],
+                colors: [
+                    getDrawableColor(adaptiveColorsByRoleID[uploadColorKey] ?? configuration.uploadColor),
+                    getDrawableColor(adaptiveColorsByRoleID[downloadColorKey] ?? configuration.downloadColor)
+                ]
+            )
+        }
+
+        let maybePercent: Int?
+
+        if metricID == cpuMetricID {
+            maybePercent = snapshot.cpuUsagePercent
+        } else if metricID == gpuMetricID {
+            maybePercent = snapshot.gpuUsagePercent
+        } else if metricID == ramMetricID {
+            maybePercent = snapshot.ramUsagePercent
+        } else {
+            maybePercent = snapshot.ssdUsagePercent
+        }
+
+        return RenderedMetricColumn(
+            metricID: metricID,
+            rect: rect,
+            values: [formatPercentage(maybePercent)],
+            colors: [
+                getDrawableColor(adaptiveColorsByRoleID[labelTextColorKey] ?? configuration.labelTextColor),
+                getDrawableColor(maybePercent.map(getValueColor) ?? adaptiveColorsByRoleID[baseTextColorKey] ?? configuration.baseTextColor)
+            ]
+        )
     }
 
     private static func getEnabledMetrics(configuration: AppConfiguration) -> [MetricConfiguration] {
@@ -104,13 +199,13 @@ final class StatusMetricsView: NSView {
 
     private func drawColumn(label: String, percent: Int?, x: CGFloat) {
         let labelAttributes: [NSAttributedString.Key: Any] = [
-            .font: getLabelFont(),
+            .font: labelFont,
             .foregroundColor: getDrawableColor(
                 adaptiveColorsByRoleID[labelTextColorKey] ?? configuration.labelTextColor
             )
         ]
         let valueAttributes: [NSAttributedString.Key: Any] = [
-            .font: getValueFont(),
+            .font: valueFont,
             .foregroundColor: getDrawableColor(
                 percent.map(getValueColor)
                     ?? adaptiveColorsByRoleID[baseTextColorKey]
@@ -123,14 +218,12 @@ final class StatusMetricsView: NSView {
     }
 
     private func drawNetwork(x: CGFloat) {
-        let valueParagraphStyle = NSMutableParagraphStyle()
-        valueParagraphStyle.alignment = .right
         let valueAttributes: [NSAttributedString.Key: Any] = [
-            .font: getNetworkFont(),
-            .paragraphStyle: valueParagraphStyle
+            .font: networkFont,
+            .paragraphStyle: networkParagraphStyle
         ]
         let unitAttributes: [NSAttributedString.Key: Any] = [
-            .font: getNetworkFont()
+            .font: networkFont
         ]
         drawNetworkValue(
             maybeBytesPerSecond: snapshot.networkUploadBytesPerSecond,

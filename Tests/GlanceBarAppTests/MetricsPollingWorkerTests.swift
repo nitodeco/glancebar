@@ -193,7 +193,12 @@ private final class SnapshotRecorder {
         ),
         onSnapshot: { _ in }
     )
-    try await Task.sleep(for: .milliseconds(80))
+    let pollingDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+
+    while metricsReader.callCount(metricID: cpuMetricID) < 2, ContinuousClock.now < pollingDeadline {
+        try await Task.sleep(for: .milliseconds(5))
+    }
+
     await metricsPollingWorker.stop()
     let callCountAfterStop = metricsReader.callCount(metricID: cpuMetricID)
     try await Task.sleep(for: .milliseconds(80))

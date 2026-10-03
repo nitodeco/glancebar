@@ -85,6 +85,7 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
     private var pollingStepperByMetricID: [String: NSStepper] = [:]
     private var colorMenuByRoleID: [String: NSPopUpButton] = [:]
     private var colorEditorWindowController: ColorEditorWindowController?
+    private var maybeColorEditorFrame: NSRect?
 
     init(
         configuration: AppConfiguration,
@@ -533,6 +534,7 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
         let colorEditorWindowController = colorEditorWindowController ?? ColorEditorWindowController(
             configuration: configuration,
             colorRole: colorRole,
+            maybeWindowFrame: maybeColorEditorFrame,
             onAdjustmentChange: { [weak self] colorRoleID, colorAdjustment in
                 guard let self else {
                     return
@@ -541,6 +543,10 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
                 var colorAdjustments = configuration.colorAdjustments
                 colorAdjustments[colorRoleID] = colorAdjustment
                 publish(configuration: makeConfiguration(colorAdjustments: colorAdjustments))
+            },
+            onClose: { [weak self] windowFrame in
+                self?.maybeColorEditorFrame = windowFrame
+                self?.colorEditorWindowController = nil
             }
         )
         self.colorEditorWindowController = colorEditorWindowController
@@ -636,10 +642,11 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
 }
 
 @MainActor
-private final class ColorEditorWindowController: NSWindowController {
+final class ColorEditorWindowController: NSWindowController, NSWindowDelegate {
     private var configuration: AppConfiguration
     private var colorRole: ColorRole
     private let onAdjustmentChange: (String, ColorAdjustment) -> Void
+    private let onClose: (NSRect) -> Void
     private let previewView = NSView()
     private let hueSlider = NSSlider()
     private let saturationSlider = NSSlider()
@@ -651,11 +658,14 @@ private final class ColorEditorWindowController: NSWindowController {
     init(
         configuration: AppConfiguration,
         colorRole: ColorRole,
-        onAdjustmentChange: @escaping (String, ColorAdjustment) -> Void
+        maybeWindowFrame: NSRect? = nil,
+        onAdjustmentChange: @escaping (String, ColorAdjustment) -> Void,
+        onClose: @escaping (NSRect) -> Void
     ) {
         self.configuration = configuration
         self.colorRole = colorRole
         self.onAdjustmentChange = onAdjustmentChange
+        self.onClose = onClose
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 340, height: 260),
             styleMask: [.titled, .closable],
@@ -665,13 +675,28 @@ private final class ColorEditorWindowController: NSWindowController {
         super.init(window: window)
         window.isReleasedWhenClosed = false
         window.contentView = makeContentView()
-        window.center()
+        window.delegate = self
+
+        if let maybeWindowFrame {
+            window.setFrame(maybeWindowFrame, display: false)
+        } else {
+            window.center()
+        }
+
         configureSliders()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         nil
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window else {
+            return
+        }
+
+        onClose(window.frame)
     }
 
     func edit(colorRole: ColorRole, configuration: AppConfiguration) {

@@ -18,18 +18,85 @@ private let adaptiveContrastLightAppearanceBackground = NSColor(
     alpha: 1
 )
 
+struct WallpaperColorCacheKey: Equatable {
+    let url: URL
+    let fileNumber: UInt64
+    let systemNumber: UInt64
+    let modificationDate: Date
+    let fileSizeInBytes: UInt64
+    let statusItemRect: CGRect
+    let screenFrame: CGRect
+    let backingScaleFactor: CGFloat
+    let displayID: UInt32
+    let appearanceName: String?
+}
+
 @MainActor
-final class AdaptiveTextContrastSampler {
+struct WallpaperColorCache {
+    private var maybeSample: (key: WallpaperColorCacheKey, color: NSColor)?
+
+    mutating func reset() {
+        maybeSample = nil
+    }
+
+    mutating func color(for maybeKey: WallpaperColorCacheKey?, loadColor: () -> NSColor?) -> NSColor? {
+        if let maybeKey, let maybeSample, maybeSample.key == maybeKey {
+            return maybeSample.color
+        }
+
+        maybeSample = nil
+        let maybeColor = loadColor()
+
+        if let maybeKey, let maybeColor {
+            maybeSample = (key: maybeKey, color: maybeColor)
+        }
+
+        return maybeColor
+    }
+}
+
+@MainActor
+final class AdaptiveTextContrastSampler: NSObject {
     private var lastSampleDate = Date.distantPast
     private var cachedBackgroundColor: NSColor?
+    private var wallpaperColorCache = WallpaperColorCache()
+
+    override init() {
+        super.init()
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(wallpaperContextDidChange),
+            name: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil
+        )
+    }
+
+    deinit {
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+    }
+
+    @objc private func wallpaperContextDidChange() {
+        reset()
+    }
 
     func reset() {
         lastSampleDate = .distantPast
         cachedBackgroundColor = nil
+        wallpaperColorCache.reset()
     }
 
     func sampleBackgroundColor(statusButton: NSStatusBarButton?, force: Bool = false) -> NSColor? {
+        autoreleasepool {
+            sampleBackgroundColorInPool(statusButton: statusButton, force: force)
+        }
+    }
+
+    private func sampleBackgroundColorInPool(statusButton: NSStatusBarButton?, force: Bool) -> NSColor? {
         let now = Date()
+
+        if force {
+            wallpaperColorCache.reset()
+        }
 
         if !force, now.timeIntervalSince(lastSampleDate) < adaptiveContrastMinimumSampleIntervalInSeconds {
             return cachedBackgroundColor
@@ -49,7 +116,7 @@ final class AdaptiveTextContrastSampler {
             return screenColor
         }
 
-        if let wallpaperColor = getWallpaperColor(statusItemRect: statusItemRect, screen: screen) {
+        if let wallpaperColor = getWallpaperColor(statusItemRect: statusItemRect, screen: screen, statusButton: statusButton) {
             cachedBackgroundColor = wallpaperColor
             return wallpaperColor
         }
@@ -131,27 +198,47 @@ final class AdaptiveTextContrastSampler {
         return isDisplayRectUsable ? displayRect : nil
     }
 
-    private func getWallpaperColor(statusItemRect: CGRect, screen: NSScreen) -> NSColor? {
-        guard let wallpaperURL = NSWorkspace.shared.desktopImageURL(for: screen),
-              let wallpaperImage = NSImage(contentsOf: wallpaperURL),
+    private func getWallpaperColor(statusItemRect: CGRect, screen: NSScreen, statusButton: NSStatusBarButton) -> NSColor? {
+        guard let wallpaperURL = NSWorkspace.shared.desktopImageURL(for: screen) else {
+            wallpaperColorCache.reset()
+
+            return nil
+        }
+
+        let maybeCacheKey = getWallpaperColorCacheKey(
+            url: wallpaperURL,
+            statusItemRect: statusItemRect,
+            screenFrame: screen.frame,
+            backingScaleFactor: screen.backingScaleFactor,
+            maybeDisplayID: screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+            appearanceName: statusButton.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])?.rawValue
+        )
+
+        return wallpaperColorCache.color(for: maybeCacheKey) {
+            getWallpaperColorFromImage(url: wallpaperURL, statusItemRect: statusItemRect, screenFrame: screen.frame)
+        }
+    }
+
+    private func getWallpaperColorFromImage(url: URL, statusItemRect: CGRect, screenFrame: CGRect) -> NSColor? {
+        guard let wallpaperImage = NSImage(contentsOf: url),
               let wallpaperCGImage = wallpaperImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
         else {
             return nil
         }
 
         let wallpaperSize = CGSize(width: wallpaperCGImage.width, height: wallpaperCGImage.height)
-        let wallpaperScale = max(screen.frame.width / wallpaperSize.width, screen.frame.height / wallpaperSize.height)
+        let wallpaperScale = max(screenFrame.width / wallpaperSize.width, screenFrame.height / wallpaperSize.height)
         let displayedWallpaperSize = CGSize(
             width: wallpaperSize.width * wallpaperScale,
             height: wallpaperSize.height * wallpaperScale
         )
-        let hiddenWallpaperWidthInPixels = max(0, displayedWallpaperSize.width - screen.frame.width)
+        let hiddenWallpaperWidthInPixels = max(0, displayedWallpaperSize.width - screenFrame.width)
             / (2 * wallpaperScale)
-        let hiddenWallpaperHeightInPixels = max(0, displayedWallpaperSize.height - screen.frame.height)
+        let hiddenWallpaperHeightInPixels = max(0, displayedWallpaperSize.height - screenFrame.height)
             / (2 * wallpaperScale)
         let statusItemRectFromTop = CGRect(
-            x: statusItemRect.minX - screen.frame.minX,
-            y: screen.frame.maxY - statusItemRect.maxY,
+            x: statusItemRect.minX - screenFrame.minX,
+            y: screenFrame.maxY - statusItemRect.maxY,
             width: statusItemRect.width,
             height: statusItemRect.height
         )
@@ -238,4 +325,37 @@ final class AdaptiveTextContrastSampler {
             blue: Double(pixelIterator.next() ?? 0) / adaptiveContrastMaxColorByte
         )
     }
+}
+
+func getWallpaperColorCacheKey(
+    url: URL,
+    statusItemRect: CGRect,
+    screenFrame: CGRect,
+    backingScaleFactor: CGFloat,
+    maybeDisplayID: NSNumber?,
+    appearanceName: String?
+) -> WallpaperColorCacheKey? {
+    guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+          let fileNumber = attributes[.systemFileNumber] as? NSNumber,
+          let systemNumber = attributes[.systemNumber] as? NSNumber,
+          let modificationDate = attributes[.modificationDate] as? Date,
+          let fileSize = attributes[.size] as? NSNumber,
+          let maybeDisplayID,
+          let displayID = UInt32(exactly: maybeDisplayID.int64Value)
+    else {
+        return nil
+    }
+
+    return WallpaperColorCacheKey(
+        url: url,
+        fileNumber: fileNumber.uint64Value,
+        systemNumber: systemNumber.uint64Value,
+        modificationDate: modificationDate,
+        fileSizeInBytes: fileSize.uint64Value,
+        statusItemRect: statusItemRect,
+        screenFrame: screenFrame,
+        backingScaleFactor: backingScaleFactor,
+        displayID: displayID,
+        appearanceName: appearanceName
+    )
 }

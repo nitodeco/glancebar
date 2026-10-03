@@ -12,7 +12,7 @@ private let networkIpv6StateKey = "State:/Network/Global/IPv6"
 private let primaryInterfaceKey = "PrimaryInterface"
 
 public final class SystemMetricsReader {
-    private var maybePreviousCpuTicks: [UInt32]?
+    private var previousCpuTicks: [UInt32] = []
     private var maybePreviousNetworkCounters: NetworkCounters?
     private var maybePreviousNetworkDate: Date?
     private var failedMetricProbeIDs: Set<MetricProbeID> = []
@@ -56,8 +56,13 @@ public final class SystemMetricsReader {
         var processorCount: mach_msg_type_number_t = 0
         var cpuInfoCount: mach_msg_type_number_t = 0
 
+        let hostPort = mach_host_self()
+        defer {
+            mach_port_deallocate(mach_task_self_, hostPort)
+        }
+
         let result = host_processor_info(
-            mach_host_self(),
+            hostPort,
             PROCESSOR_CPU_LOAD_INFO,
             &processorCount,
             &cpuInfo,
@@ -73,74 +78,11 @@ public final class SystemMetricsReader {
             vm_deallocate(mach_task_self_, vm_address_t(bitPattern: cpuInfo), vmSize)
         }
 
-        let tickCount = Int(cpuInfoCount)
-        let cpuLoadInfoCount = Int(CPU_STATE_MAX)
-
-        guard hasValidCpuTickBufferShape(
-            tickCount: tickCount,
-            processorCount: Int(processorCount),
-            cpuLoadInfoCount: cpuLoadInfoCount
-        ) else {
-            return nil
-        }
-
-        let ticks = (0..<tickCount).map { tickOffset in
-            UInt32(bitPattern: cpuInfo[tickOffset])
-        }
-
-        guard let previousCpuTicks = maybePreviousCpuTicks, previousCpuTicks.count == ticks.count else {
-            maybePreviousCpuTicks = ticks
-            return 0
-        }
-
-        maybePreviousCpuTicks = ticks
-
-        let processorUsages = stride(from: 0, to: ticks.count, by: cpuLoadInfoCount).compactMap { tickOffset -> CpuUsage? in
-            let userIndex = tickOffset + Int(CPU_STATE_USER)
-            let systemIndex = tickOffset + Int(CPU_STATE_SYSTEM)
-            let niceIndex = tickOffset + Int(CPU_STATE_NICE)
-            let idleIndex = tickOffset + Int(CPU_STATE_IDLE)
-            guard
-                let previousUserTick = getCpuTick(ticks: previousCpuTicks, index: userIndex),
-                let userTick = getCpuTick(ticks: ticks, index: userIndex),
-                let previousSystemTick = getCpuTick(ticks: previousCpuTicks, index: systemIndex),
-                let systemTick = getCpuTick(ticks: ticks, index: systemIndex),
-                let previousNiceTick = getCpuTick(ticks: previousCpuTicks, index: niceIndex),
-                let niceTick = getCpuTick(ticks: ticks, index: niceIndex),
-                let previousIdleTick = getCpuTick(ticks: previousCpuTicks, index: idleIndex),
-                let idleTick = getCpuTick(ticks: ticks, index: idleIndex)
-            else {
-                return nil
-            }
-
-            let user = getTickDelta(from: previousUserTick, to: userTick)
-            let system = getTickDelta(from: previousSystemTick, to: systemTick)
-            let nice = getTickDelta(from: previousNiceTick, to: niceTick)
-            let idle = getTickDelta(from: previousIdleTick, to: idleTick)
-            let active = user + system + nice
-            let total = active + idle
-
-            return CpuUsage(activeTicks: active, totalTicks: total)
-        }
-
-        guard processorUsages.count == Int(processorCount) else {
-            return nil
-        }
-
-        let totalActiveTicks = processorUsages.reduce(UInt64(0)) { acc, usage in
-            acc + usage.activeTicks
-        }
-        let totalTicks = processorUsages.reduce(UInt64(0)) { acc, usage in
-            acc + usage.totalTicks
-        }
-
-        guard totalTicks > 0 else {
-            return 0
-        }
-
-        let usage = Double(totalActiveTicks) / Double(totalTicks)
-
-        return clampPercent(Int((usage * 100).rounded()))
+        return getCpuUsagePercent(
+            ticks: UnsafeBufferPointer(start: cpuInfo, count: Int(cpuInfoCount)),
+            previousTicks: &previousCpuTicks,
+            processorCount: Int(processorCount)
+        )
     }
 
     private func readRawNetworkThroughput(date: Date) -> NetworkThroughput? {
@@ -223,11 +165,6 @@ public struct NetworkThroughput: Equatable, Sendable {
     }
 }
 
-private struct CpuUsage {
-    let activeTicks: UInt64
-    let totalTicks: UInt64
-}
-
 private enum MetricProbeID: String {
     case cpu
     case gpu
@@ -268,18 +205,61 @@ func getBytesPerSecond(deltaBytes: UInt64, intervalInSeconds: TimeInterval) -> U
     return UInt64(bytesPerSecond)
 }
 
-private func getCpuTick(ticks: [UInt32], index: Int) -> UInt32? {
-    ticks.enumerated().first { tickIndex, _ in
-        tickIndex == index
-    }?.element
+func getCpuUsagePercent(
+    ticks: UnsafeBufferPointer<integer_t>,
+    previousTicks: inout [UInt32],
+    processorCount: Int
+) -> Int? {
+    let cpuLoadInfoCount = Int(CPU_STATE_MAX)
+
+    guard hasValidCpuTickBufferShape(
+        tickCount: ticks.count,
+        processorCount: processorCount,
+        cpuLoadInfoCount: cpuLoadInfoCount
+    ) else {
+        return nil
+    }
+
+    guard previousTicks.count == ticks.count else {
+        previousTicks = ticks.map { UInt32(bitPattern: $0) }
+
+        return 0
+    }
+
+    return previousTicks.withUnsafeMutableBufferPointer { baselineTicks in
+        var totalActiveTicks: UInt64 = 0
+        var totalTicks: UInt64 = 0
+
+        for (tickOffset, rawTick) in ticks.enumerated() {
+            let tick = UInt32(bitPattern: rawTick)
+            let delta = getTickDelta(from: baselineTicks[tickOffset], to: tick)
+            baselineTicks[tickOffset] = tick
+            totalTicks += delta
+
+            if tickOffset % cpuLoadInfoCount != Int(CPU_STATE_IDLE) {
+                totalActiveTicks += delta
+            }
+        }
+
+        guard totalTicks > 0 else {
+            return 0
+        }
+
+        return clampPercent(Int((Double(totalActiveTicks) / Double(totalTicks) * 100).rounded()))
+    }
 }
 
 private func readLiveRamUsagePercent() -> Int? {
     var stats = vm_statistics64()
     var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.stride / MemoryLayout<integer_t>.stride)
+    let hostPort = mach_host_self()
+    defer {
+        mach_port_deallocate(mach_task_self_, hostPort)
+    }
+
     let result = withUnsafeMutablePointer(to: &stats) { statsPointer in
         statsPointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { reboundPointer in
-            host_statistics64(mach_host_self(), HOST_VM_INFO64, reboundPointer, &count)
+            host_statistics64(hostPort, HOST_VM_INFO64, reboundPointer, &count)
         }
     }
 
