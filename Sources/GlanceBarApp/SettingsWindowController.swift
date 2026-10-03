@@ -11,7 +11,7 @@ private let metricListHeight: CGFloat = 140
 private let metricCheckboxColumnID = NSUserInterfaceItemIdentifier("enabled")
 private let metricNameColumnID = NSUserInterfaceItemIdentifier("metric")
 private let metricPasteboardType = NSPasteboard.PasteboardType("dev.nitodeco.glancebar.metric")
-private let colorSwatchGlyph = "■"
+private let colorSwatchSizeInPoints: CGFloat = 10
 
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
@@ -139,7 +139,6 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
         let topStack = NSStackView(views: [
             makeCheckboxRow(label: "Auto-update", checkbox: autoUpdateButton),
             makeCheckboxRow(label: "Launch at login", checkbox: launchAtLoginButton),
-            makeMetricList(),
             makeNumberRow(
                 label: "Warning above",
                 valueLabel: warningThresholdValueLabel,
@@ -149,7 +148,8 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
                 label: "Critical above",
                 valueLabel: criticalThresholdValueLabel,
                 stepper: criticalThresholdStepper
-            )
+            ),
+            makeMetricList()
         ])
         topStack.orientation = .vertical
         topStack.alignment = .leading
@@ -205,9 +205,9 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
 
         return makeTabViewItem(
             label: "Colors",
-            arrangedSubviews: colorRows + [
+            arrangedSubviews: [
                 makeCheckboxRow(label: "Auto contrast", checkbox: autoTextContrastButton)
-            ]
+            ] + colorRows
         )
     }
 
@@ -385,7 +385,7 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
         for colorPreset in presets {
             colorMenu.addItem(withTitle: colorPreset.title)
             colorMenu.lastItem?.representedObject = colorPreset.id
-            colorMenu.lastItem?.attributedTitle = makeColorPresetTitle(colorPreset: colorPreset)
+            colorMenu.lastItem?.image = makeColorPresetSwatch(color: colorPreset.color)
         }
 
         if let selectedItem = colorMenu.itemArray.first(where: { menuItem in
@@ -393,19 +393,6 @@ private final class SettingsView: NSView, NSTableViewDataSource, NSTableViewDele
         }) {
             colorMenu.select(selectedItem)
         }
-    }
-
-    private func makeColorPresetTitle(colorPreset: ColorPreset) -> NSAttributedString {
-        let title = NSMutableAttributedString(
-            string: "\(colorSwatchGlyph) ",
-            attributes: [
-                .foregroundColor: colorPreset.color,
-                .font: NSFont.systemFont(ofSize: 12, weight: .semibold)
-            ]
-        )
-        title.append(NSAttributedString(string: colorPreset.title, attributes: [.foregroundColor: NSColor.labelColor]))
-
-        return title
     }
 
     private func getSelectedColorID(colorRoleID: String) -> String {
@@ -826,4 +813,20 @@ private func formatSignedPercent(_ value: Int) -> String {
     }
 
     return "\(value)"
+}
+
+@MainActor
+func makeColorPresetSwatch(color: NSColor) -> NSImage {
+    let image = NSImage(
+        size: NSSize(width: colorSwatchSizeInPoints, height: colorSwatchSizeInPoints),
+        flipped: false
+    ) { swatchRect in
+        color.setFill()
+        NSBezierPath(roundedRect: swatchRect, xRadius: 2, yRadius: 2).fill()
+
+        return true
+    }
+    image.isTemplate = false
+
+    return image
 }

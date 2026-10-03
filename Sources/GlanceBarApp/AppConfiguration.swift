@@ -132,12 +132,12 @@ struct ColorRole {
 }
 
 let colorRoles = [
+    ColorRole(id: labelTextColorKey, title: "Label text", usesTextPresets: true),
+    ColorRole(id: baseTextColorKey, title: "Value text", usesTextPresets: true),
     ColorRole(id: warningColorKey, title: "Warning", usesTextPresets: false),
     ColorRole(id: criticalColorKey, title: "Critical", usesTextPresets: false),
     ColorRole(id: uploadColorKey, title: "Upload", usesTextPresets: false),
-    ColorRole(id: downloadColorKey, title: "Download", usesTextPresets: false),
-    ColorRole(id: baseTextColorKey, title: "Base text", usesTextPresets: true),
-    ColorRole(id: labelTextColorKey, title: "Label text", usesTextPresets: true)
+    ColorRole(id: downloadColorKey, title: "Download", usesTextPresets: false)
 ]
 
 @MainActor
