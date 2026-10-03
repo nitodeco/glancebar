@@ -29,3 +29,50 @@ import Testing
         #expect(centerColor.alphaComponent == 1)
     }
 }
+
+@MainActor
+private final class ColorEditorTestOwner {
+    var maybeController: ColorEditorWindowController?
+    var maybeFrame: NSRect?
+}
+
+@MainActor
+@Test func closedColorEditorReleasesWindowAndPreservesPosition() throws {
+    _ = NSApplication.shared
+    let owner = ColorEditorTestOwner()
+    let configuration = makeDefaultAppConfiguration()
+    let role = try #require(colorRoles.first)
+    let frame = NSRect(x: 200, y: 200, width: 340, height: 260)
+    weak var maybeReleasedController: ColorEditorWindowController?
+    weak var maybeReleasedWindow: NSWindow?
+
+    autoreleasepool {
+        owner.maybeController = ColorEditorWindowController(
+            configuration: configuration,
+            colorRole: role,
+            maybeWindowFrame: frame,
+            onAdjustmentChange: { _, _ in },
+            onClose: { [weak owner] windowFrame in
+                owner?.maybeFrame = windowFrame
+                owner?.maybeController = nil
+            }
+        )
+        maybeReleasedController = owner.maybeController
+        maybeReleasedWindow = owner.maybeController?.window
+        owner.maybeController?.close()
+    }
+
+    #expect(owner.maybeController == nil)
+    #expect(maybeReleasedController == nil)
+    #expect(maybeReleasedWindow == nil)
+    #expect(owner.maybeFrame == frame)
+
+    let reopenedController = ColorEditorWindowController(
+        configuration: configuration,
+        colorRole: role,
+        maybeWindowFrame: owner.maybeFrame,
+        onAdjustmentChange: { _, _ in },
+        onClose: { _ in }
+    )
+    #expect(reopenedController.window?.frame == frame)
+}

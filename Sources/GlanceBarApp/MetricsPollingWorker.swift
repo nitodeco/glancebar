@@ -84,7 +84,9 @@ actor MetricsPollingWorker {
                 continue
             }
 
-            poll(metricIDs: dueMetricIDs, date: now)
+            autoreleasepool {
+                poll(metricIDs: dueMetricIDs, date: now)
+            }
 
             guard !Task.isCancelled else {
                 return

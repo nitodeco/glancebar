@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 @testable import GlanceBarCore
@@ -123,4 +124,58 @@ private func makeReader(
             readNetworkCounters: readNetworkCounters
         )
     )
+}
+
+@Test func cpuSamplingPreservesBaselineRoundingAndRollover() {
+    var previousTicks: [UInt32] = []
+    let initialTicks: [Int32] = [0, 0, 0, 0, -1, 0, 0, 0]
+    let firstPercent = initialTicks.withUnsafeBufferPointer {
+        getCpuUsagePercent(ticks: $0, previousTicks: &previousTicks, processorCount: 2)
+    }
+    #expect(firstPercent == 0)
+
+    let nextTicks: [Int32] = [1, 1, 3, 1, 0, 0, 0, 0]
+    let nextPercent = nextTicks.withUnsafeBufferPointer {
+        getCpuUsagePercent(ticks: $0, previousTicks: &previousTicks, processorCount: 2)
+    }
+    #expect(nextPercent == 57)
+    #expect(previousTicks == nextTicks.map { UInt32(bitPattern: $0) })
+
+    let idlePercent = nextTicks.withUnsafeBufferPointer {
+        getCpuUsagePercent(ticks: $0, previousTicks: &previousTicks, processorCount: 2)
+    }
+    #expect(idlePercent == 0)
+
+    let invalidTicks: [Int32] = [0, 0, 0]
+    let invalidPercent = invalidTicks.withUnsafeBufferPointer {
+        getCpuUsagePercent(ticks: $0, previousTicks: &previousTicks, processorCount: 1)
+    }
+    #expect(invalidPercent == nil)
+    #expect(previousTicks == nextTicks.map { UInt32(bitPattern: $0) })
+
+    let resizedTicks: [Int32] = [10, 10, 10, 10]
+    let resizedPercent = resizedTicks.withUnsafeBufferPointer {
+        getCpuUsagePercent(ticks: $0, previousTicks: &previousTicks, processorCount: 1)
+    }
+    #expect(resizedPercent == 0)
+    #expect(previousTicks == [10, 10, 10, 10])
+}
+
+@Test func repeatedSystemSamplingBalancesHostSendRights() {
+    let hostPort = mach_host_self()
+    defer {
+        mach_port_deallocate(mach_task_self_, hostPort)
+    }
+    var initialSendRights: mach_port_urefs_t = 0
+    #expect(mach_port_get_refs(mach_task_self_, hostPort, MACH_PORT_RIGHT_SEND, &initialSendRights) == KERN_SUCCESS)
+    let reader = SystemMetricsReader()
+
+    for _ in 0..<100 {
+        #expect(reader.readCpuUsagePercent() != nil)
+        #expect(reader.readRamUsagePercent() != nil)
+    }
+
+    var finalSendRights: mach_port_urefs_t = 0
+    #expect(mach_port_get_refs(mach_task_self_, hostPort, MACH_PORT_RIGHT_SEND, &finalSendRights) == KERN_SUCCESS)
+    #expect(finalSendRights == initialSendRights)
 }

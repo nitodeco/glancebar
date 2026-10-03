@@ -43,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let metricsView = StatusMetricsView(frame: .zero)
     private let configurationStore: AppConfigurationStore
     private let adaptiveTextContrastSampler = AdaptiveTextContrastSampler()
+    private var maybePreviousContrastInputs: (backgroundColor: NSColor, colors: [NSColor])?
     private let launchAtLoginController = LaunchAtLoginController()
     private lazy var updaterCoordinator = UpdaterCoordinator { [weak self] in
         self?.updaterStateDidChange()
@@ -131,6 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateAdaptiveTextContrastIfNeeded(force: Bool = false) {
         guard configuration.isAutoTextContrastEnabled else {
+            maybePreviousContrastInputs = nil
             metricsView.adaptiveColorsByRoleID = [:]
             return
         }
@@ -139,10 +141,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusButton: statusItem.button,
             force: force
         ) else {
+            maybePreviousContrastInputs = nil
             metricsView.adaptiveColorsByRoleID = [:]
             return
         }
 
+        let configuredColors = colorRoles.map { colorRole in
+            getConfiguredColor(configuration: configuration, colorRoleID: colorRole.id)
+        }
+
+        if let maybePreviousContrastInputs,
+           maybePreviousContrastInputs.backgroundColor == backgroundColor,
+           maybePreviousContrastInputs.colors == configuredColors
+        {
+            return
+        }
+
+        maybePreviousContrastInputs = (backgroundColor: backgroundColor, colors: configuredColors)
         metricsView.adaptiveColorsByRoleID = colorRoles.reduce(into: [String: NSColor]()) {
             adaptiveColorsByRoleID,
             colorRole in
